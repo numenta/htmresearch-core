@@ -208,7 +208,7 @@ if __name__ == "__main__":
 
   print "\nSetup SWIG Python module"
   setup(
-    name="nupic.bindings",
+    name="nupic.research.bindings",
     version=getVersion(),
     # This distribution contains platform-specific C++ libraries, but they are not
     # built with distutils. So we must create a dummy Extension object so when we
