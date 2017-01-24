@@ -350,6 +350,7 @@ set(src_nupiccore_srcs
     nupic/engine/YAMLUtils.cpp
     nupic/experimental/ExtendedTemporalMemory.cpp
     nupic/math/SparseMatrixAlgorithms.cpp
+    nupic/math/SparseMatrixConnections.cpp
     nupic/math/StlIo.cpp
     nupic/math/Topology.cpp
     nupic/ntypes/ArrayBase.cpp
@@ -574,6 +575,7 @@ add_executable(${src_executable_gtests}
                test/unit/math/DomainUnitTest.cpp
                test/unit/math/IndexUnitTest.cpp
                test/unit/math/MathsTest.cpp
+               test/unit/math/SegmentMatrixAdapterTest.cpp
                test/unit/math/SparseBinaryMatrixTest.cpp
                test/unit/math/SparseMatrix01UnitTest.cpp
                test/unit/math/SparseMatrixTest.cpp
