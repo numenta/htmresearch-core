@@ -1716,10 +1716,15 @@ void ExtendedTemporalMemory::write(ExtendedTemporalMemoryProto::Builder& proto) 
       numActivePotentialSynapsesForApicalSegment_[segment.flatIdx]);
   }
 
-  NTA_CHECK(learnOnOneCell_ == false) <<
-    "Serialization is not supported for learnOnOneCell";
-  NTA_CHECK(chosenCellForColumn_.empty()) <<
-    "Serialization is not supported for learnOnOneCell";
+  proto.setLearnOnOneCell(learnOnOneCell_);
+  auto chosenCellsProto = proto.initChosenCellForColumn(chosenCellForColumn_.size());
+  UInt32 chosenIdx = 0;
+  for (auto pair : chosenCellForColumn_)
+  {
+    chosenCellsProto[chosenIdx].setColumnIdx(pair.first);
+    chosenCellsProto[chosenIdx].setCellIdx(pair.second);
+    ++chosenIdx;
+  }
 }
 
 // Implementation note: this method sets up the instance using data from
@@ -1821,8 +1826,12 @@ void ExtendedTemporalMemory::read(ExtendedTemporalMemoryProto::Reader& proto)
       value.getOverlap();
   }
 
-  learnOnOneCell_ = false;
+  learnOnOneCell_ = proto.getLearnOnOneCell();
   chosenCellForColumn_.clear();
+  for (auto chosenCellProto : proto.getChosenCellForColumn())
+  {
+    chosenCellForColumn_[chosenCellProto.getColumnIdx()] = chosenCellProto.getCellIdx();
+  }
 }
 
 void ExtendedTemporalMemory::load(istream& inStream)
