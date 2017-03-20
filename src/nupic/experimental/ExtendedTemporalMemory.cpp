@@ -463,7 +463,7 @@ static void learnOnCell(
                    permanenceIncrement, permanenceDecrement);
 
       const Int32 nGrowDesired = maxNewSynapseCount -
-        numActivePotentialSynapsesForSegment[activeSegment->flatIdx];
+        numActivePotentialSynapsesForSegment[*activeSegment];
         if (nGrowDesired > 0)
         {
           growSynapses(connections, rng,
@@ -483,8 +483,8 @@ static void learnOnCell(
       cellMatchingSegmentsBegin, cellMatchingSegmentsEnd,
       [&](Segment a, Segment b)
       {
-        return (numActivePotentialSynapsesForSegment[a.flatIdx] <
-                numActivePotentialSynapsesForSegment[b.flatIdx]);
+        return (numActivePotentialSynapsesForSegment[a] <
+                numActivePotentialSynapsesForSegment[b]);
       });
 
     adaptSegment(connections,
@@ -494,7 +494,7 @@ static void learnOnCell(
                  permanenceIncrement, permanenceDecrement);
 
     const Int32 nGrowDesired = maxNewSynapseCount -
-      numActivePotentialSynapsesForSegment[bestMatchingSegment.flatIdx];
+      numActivePotentialSynapsesForSegment[bestMatchingSegment];
     if (nGrowDesired > 0)
     {
       growSynapses(connections, rng,
@@ -688,8 +688,8 @@ static void burstColumn(
         columnMatchingBasalBegin, columnMatchingBasalEnd,
         [&](Segment a, Segment b)
         {
-          return (numActivePotentialSynapsesForBasalSegment[a.flatIdx] <
-                  numActivePotentialSynapsesForBasalSegment[b.flatIdx]);
+          return (numActivePotentialSynapsesForBasalSegment[a] <
+                  numActivePotentialSynapsesForBasalSegment[b]);
         });
 
       basalCandidatesBegin = bestBasalSegment;
@@ -1036,11 +1036,13 @@ static void calculateExcitation(
 
   // Active segments, connected synapses.
   activeSegments.clear();
-  for (size_t i = 0; i < numActiveConnectedSynapsesForSegment.size(); i++)
+  for (Segment segment = 0;
+       segment < numActiveConnectedSynapsesForSegment.size();
+       segment++)
   {
-    if (numActiveConnectedSynapsesForSegment[i] >= activationThreshold)
+    if (numActiveConnectedSynapsesForSegment[segment] >= activationThreshold)
     {
-      activeSegments.push_back(connections.segmentForFlatIdx(i));
+      activeSegments.push_back(segment);
     }
   }
   std::sort(activeSegments.begin(), activeSegments.end(),
@@ -1051,11 +1053,13 @@ static void calculateExcitation(
 
   // Matching segments, potential synapses.
   matchingSegments.clear();
-  for (size_t i = 0; i < numActivePotentialSynapsesForSegment.size(); i++)
+  for (Segment segment = 0;
+       segment < numActivePotentialSynapsesForSegment.size();
+       segment++)
   {
-    if (numActivePotentialSynapsesForSegment[i] >= minThreshold)
+    if (numActivePotentialSynapsesForSegment[segment] >= minThreshold)
     {
-      matchingSegments.push_back(connections.segmentForFlatIdx(i));
+      matchingSegments.push_back(segment);
     }
   }
   std::sort(matchingSegments.begin(), matchingSegments.end(),
@@ -1538,7 +1542,7 @@ void ExtendedTemporalMemory::save(ostream& outStream) const
 
     outStream << idx << " ";
     outStream << cell << " ";
-    outStream << numActiveConnectedSynapsesForBasalSegment_[segment.flatIdx]
+    outStream << numActiveConnectedSynapsesForBasalSegment_[segment]
               << " ";
   }
   outStream << endl;
@@ -1555,7 +1559,7 @@ void ExtendedTemporalMemory::save(ostream& outStream) const
 
     outStream << idx << " ";
     outStream << cell << " ";
-    outStream << numActivePotentialSynapsesForBasalSegment_[segment.flatIdx]
+    outStream << numActivePotentialSynapsesForBasalSegment_[segment]
               << " ";
   }
   outStream << endl;
@@ -1572,7 +1576,7 @@ void ExtendedTemporalMemory::save(ostream& outStream) const
 
     outStream << idx << " ";
     outStream << cell << " ";
-    outStream << numActiveConnectedSynapsesForApicalSegment_[segment.flatIdx]
+    outStream << numActiveConnectedSynapsesForApicalSegment_[segment]
               << " ";
   }
   outStream << endl;
@@ -1589,7 +1593,7 @@ void ExtendedTemporalMemory::save(ostream& outStream) const
 
     outStream << idx << " ";
     outStream << cell << " ";
-    outStream << numActivePotentialSynapsesForApicalSegment_[segment.flatIdx]
+    outStream << numActivePotentialSynapsesForApicalSegment_[segment]
               << " ";
   }
   outStream << endl;
@@ -1659,7 +1663,7 @@ void ExtendedTemporalMemory::write(ExtendedTemporalMemoryProto::Builder& proto) 
     activeBasalSegmentOverlaps[i].setCell(cell);
     activeBasalSegmentOverlaps[i].setSegment(idx);
     activeBasalSegmentOverlaps[i].setOverlap(
-      numActiveConnectedSynapsesForBasalSegment_[segment.flatIdx]);
+      numActiveConnectedSynapsesForBasalSegment_[segment]);
   }
 
   auto matchingBasalSegmentOverlaps =
@@ -1677,7 +1681,7 @@ void ExtendedTemporalMemory::write(ExtendedTemporalMemoryProto::Builder& proto) 
     matchingBasalSegmentOverlaps[i].setCell(cell);
     matchingBasalSegmentOverlaps[i].setSegment(idx);
     matchingBasalSegmentOverlaps[i].setOverlap(
-      numActivePotentialSynapsesForBasalSegment_[segment.flatIdx]);
+      numActivePotentialSynapsesForBasalSegment_[segment]);
   }
 
   auto activeApicalSegmentOverlaps =
@@ -1695,7 +1699,7 @@ void ExtendedTemporalMemory::write(ExtendedTemporalMemoryProto::Builder& proto) 
     activeApicalSegmentOverlaps[i].setCell(cell);
     activeApicalSegmentOverlaps[i].setSegment(idx);
     activeApicalSegmentOverlaps[i].setOverlap(
-      numActiveConnectedSynapsesForApicalSegment_[segment.flatIdx]);
+      numActiveConnectedSynapsesForApicalSegment_[segment]);
   }
 
   auto matchingApicalSegmentOverlaps =
@@ -1713,7 +1717,7 @@ void ExtendedTemporalMemory::write(ExtendedTemporalMemoryProto::Builder& proto) 
     matchingApicalSegmentOverlaps[i].setCell(cell);
     matchingApicalSegmentOverlaps[i].setSegment(idx);
     matchingApicalSegmentOverlaps[i].setOverlap(
-      numActivePotentialSynapsesForApicalSegment_[segment.flatIdx]);
+      numActivePotentialSynapsesForApicalSegment_[segment]);
   }
 
   NTA_CHECK(learnOnOneCell_ == false) <<
@@ -1784,8 +1788,7 @@ void ExtendedTemporalMemory::read(ExtendedTemporalMemoryProto::Reader& proto)
                                                   value.getSegment());
 
     activeBasalSegments_.push_back(segment);
-    numActiveConnectedSynapsesForBasalSegment_[segment.flatIdx] =
-      value.getOverlap();
+    numActiveConnectedSynapsesForBasalSegment_[segment] = value.getOverlap();
   }
 
   matchingBasalSegments_.clear();
@@ -1795,8 +1798,7 @@ void ExtendedTemporalMemory::read(ExtendedTemporalMemoryProto::Reader& proto)
                                                   value.getSegment());
 
     matchingBasalSegments_.push_back(segment);
-    numActivePotentialSynapsesForBasalSegment_[segment.flatIdx] =
-      value.getOverlap();
+    numActivePotentialSynapsesForBasalSegment_[segment] = value.getOverlap();
   }
 
   activeApicalSegments_.clear();
@@ -1806,8 +1808,7 @@ void ExtendedTemporalMemory::read(ExtendedTemporalMemoryProto::Reader& proto)
                                                    value.getSegment());
 
     activeApicalSegments_.push_back(segment);
-    numActiveConnectedSynapsesForApicalSegment_[segment.flatIdx] =
-      value.getOverlap();
+    numActiveConnectedSynapsesForApicalSegment_[segment] = value.getOverlap();
   }
 
   matchingApicalSegments_.clear();
@@ -1817,8 +1818,7 @@ void ExtendedTemporalMemory::read(ExtendedTemporalMemoryProto::Reader& proto)
                                                    value.getSegment());
 
     matchingApicalSegments_.push_back(segment);
-    numActivePotentialSynapsesForApicalSegment_[segment.flatIdx] =
-      value.getOverlap();
+    numActivePotentialSynapsesForApicalSegment_[segment] = value.getOverlap();
   }
 
   learnOnOneCell_ = false;
@@ -1906,7 +1906,7 @@ void ExtendedTemporalMemory::load(istream& inStream)
     Segment segment = basalConnections.getSegment(cellIdx, idx);
     activeBasalSegments_[i] = segment;
 
-    inStream >> numActiveConnectedSynapsesForBasalSegment_[segment.flatIdx];
+    inStream >> numActiveConnectedSynapsesForBasalSegment_[segment];
   }
 
   UInt numMatchingBasalSegments;
@@ -1923,7 +1923,7 @@ void ExtendedTemporalMemory::load(istream& inStream)
     Segment segment = basalConnections.getSegment(cellIdx, idx);
     matchingBasalSegments_[i] = segment;
 
-    inStream >> numActivePotentialSynapsesForBasalSegment_[segment.flatIdx];
+    inStream >> numActivePotentialSynapsesForBasalSegment_[segment];
   }
 
   UInt numActiveApicalSegments;
@@ -1940,7 +1940,7 @@ void ExtendedTemporalMemory::load(istream& inStream)
     Segment segment = apicalConnections.getSegment(cellIdx, idx);
     activeApicalSegments_[i] = segment;
 
-    inStream >> numActiveConnectedSynapsesForApicalSegment_[segment.flatIdx];
+    inStream >> numActiveConnectedSynapsesForApicalSegment_[segment];
   }
 
   UInt numMatchingApicalSegments;
@@ -1957,7 +1957,7 @@ void ExtendedTemporalMemory::load(istream& inStream)
     Segment segment = apicalConnections.getSegment(cellIdx, idx);
     matchingApicalSegments_[i] = segment;
 
-    inStream >> numActivePotentialSynapsesForApicalSegment_[segment.flatIdx];
+    inStream >> numActivePotentialSynapsesForApicalSegment_[segment];
   }
 
   learnOnOneCell_ = false;
