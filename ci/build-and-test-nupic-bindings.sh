@@ -116,7 +116,7 @@ cmake ${NUPIC_CORE_ROOT} \
     -DCMAKE_BUILD_TYPE=${BUILD_TYPE} \
     ${EXTRA_CMAKE_DEFINITIONS} \
     -DCMAKE_INSTALL_PREFIX=${NUPIC_CORE_ROOT}/build/release \
-    -DPY_EXTENSIONS_DIR=${NUPIC_CORE_ROOT}/bindings/py/nupic/bindings
+    -DPY_EXTENSIONS_DIR=${NUPIC_CORE_ROOT}/bindings/py/htmresearch_core
 
 # Build nupic.core
 make install
@@ -137,7 +137,7 @@ python setup.py bdist_wheel --dist-dir ${DEST_WHEELHOUSE} ${EXTRA_WHEEL_OPTIONS}
 # Install nupic.bindings before running c++ tests; py_region_test depends on it
 pip install ${PIP_USER} \
     --ignore-installed \
-    ${DEST_WHEELHOUSE}/nupic.bindings-*.whl
+    ${DEST_WHEELHOUSE}/htmresearch_core-*.whl
 
 # Run the nupic.core c++ tests
 cd ${NUPIC_CORE_ROOT}/build/release/bin
