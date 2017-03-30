@@ -841,17 +841,8 @@ if (NUPIC_BUILD_PYEXT_MODULES)
   endfunction(BUILD_EXTENSION)
 
 
-  # Algorithms
-  build_extension("algorithms")
-
-  # Engine
-  build_extension("engine_internal")
-
   # Experimental
   build_extension("experimental")
-
-  # Math
-  build_extension("math")
 
 endif() # NUPIC_BUILD_PYEXT_MODULES
 
