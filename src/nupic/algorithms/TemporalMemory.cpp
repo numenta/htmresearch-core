@@ -175,7 +175,7 @@ void TemporalMemory::initialize(
 
   // Initialize member variables
   connections = Connections(
-    numberOfCells(),
+    numberOfColumns() * cellsPerColumn_,
     maxSegmentsPerCell,
     maxSynapsesPerSegment);
   seed_((UInt64)(seed < 0 ? rand() : seed));
@@ -235,7 +235,7 @@ static CellIdx getLeastUsedCell(
 static void adaptSegment(
   Connections& connections,
   Segment segment,
-  const vector<CellIdx>& prevActiveCells,
+  const vector<bool>& prevActiveCellsDense,
   Permanence permanenceIncrement,
   Permanence permanenceDecrement)
 {
@@ -244,12 +244,11 @@ static void adaptSegment(
   for (SynapseIdx i = 0; i < synapses.size();)
   {
     const SynapseData& synapseData = connections.dataForSynapse(synapses[i]);
-    const bool isActive =
-      std::binary_search(prevActiveCells.begin(), prevActiveCells.end(),
-                         synapseData.presynapticCell);
-    Permanence permanence = synapseData.permanence;
 
-    if (isActive)
+    NTA_ASSERT(synapseData.presynapticCell < connections.numCells());
+
+    Permanence permanence = synapseData.permanence;
+    if (prevActiveCellsDense[synapseData.presynapticCell])
     {
       permanence += permanenceIncrement;
     }
@@ -327,7 +326,7 @@ static void activatePredictedColumn(
   Random& rng,
   vector<Segment>::const_iterator columnActiveSegmentsBegin,
   vector<Segment>::const_iterator columnActiveSegmentsEnd,
-  const vector<CellIdx>& prevActiveCells,
+  const vector<bool>& prevActiveCellsDense,
   const vector<CellIdx>& prevWinnerCells,
   const vector<UInt32>& numActivePotentialSynapsesForSegment,
   UInt maxNewSynapseCount,
@@ -350,11 +349,11 @@ static void activatePredictedColumn(
       {
         adaptSegment(connections,
                      *activeSegment,
-                     prevActiveCells,
+                     prevActiveCellsDense,
                      permanenceIncrement, permanenceDecrement);
 
         const Int32 nGrowDesired = maxNewSynapseCount -
-          numActivePotentialSynapsesForSegment[activeSegment->flatIdx];
+          numActivePotentialSynapsesForSegment[*activeSegment];
         if (nGrowDesired > 0)
         {
           growSynapses(connections, rng,
@@ -376,7 +375,7 @@ static void burstColumn(
   UInt column,
   vector<Segment>::const_iterator columnMatchingSegmentsBegin,
   vector<Segment>::const_iterator columnMatchingSegmentsEnd,
-  const vector<CellIdx>& prevActiveCells,
+  const vector<bool>& prevActiveCellsDense,
   const vector<CellIdx>& prevWinnerCells,
   const vector<UInt32>& numActivePotentialSynapsesForSegment,
   UInt cellsPerColumn,
@@ -398,8 +397,8 @@ static void burstColumn(
     columnMatchingSegmentsBegin, columnMatchingSegmentsEnd,
     [&](Segment a, Segment b)
     {
-      return (numActivePotentialSynapsesForSegment[a.flatIdx] <
-              numActivePotentialSynapsesForSegment[b.flatIdx]);
+      return (numActivePotentialSynapsesForSegment[a] <
+              numActivePotentialSynapsesForSegment[b]);
     });
 
   const CellIdx winnerCell = (bestMatchingSegment != columnMatchingSegmentsEnd)
@@ -416,11 +415,11 @@ static void burstColumn(
       // Learn on the best matching segment.
       adaptSegment(connections,
                    *bestMatchingSegment,
-                   prevActiveCells,
+                   prevActiveCellsDense,
                    permanenceIncrement, permanenceDecrement);
 
       const Int32 nGrowDesired = maxNewSynapseCount -
-        numActivePotentialSynapsesForSegment[bestMatchingSegment->flatIdx];
+        numActivePotentialSynapsesForSegment[*bestMatchingSegment];
       if (nGrowDesired > 0)
       {
         growSynapses(connections, rng,
@@ -454,7 +453,7 @@ static void punishPredictedColumn(
   Connections& connections,
   vector<Segment>::const_iterator columnMatchingSegmentsBegin,
   vector<Segment>::const_iterator columnMatchingSegmentsEnd,
-  const vector<CellIdx>& prevActiveCells,
+  const vector<bool>& prevActiveCellsDense,
   Permanence predictedSegmentDecrement)
 {
   if (predictedSegmentDecrement > 0.0)
@@ -462,7 +461,7 @@ static void punishPredictedColumn(
     for (auto matchingSegment = columnMatchingSegmentsBegin;
          matchingSegment != columnMatchingSegmentsEnd; matchingSegment++)
     {
-      adaptSegment(connections, *matchingSegment, prevActiveCells,
+      adaptSegment(connections, *matchingSegment, prevActiveCellsDense,
                    -predictedSegmentDecrement, 0.0);
     }
   }
@@ -477,7 +476,13 @@ void TemporalMemory::activateCells(
                                       activeColumns + activeColumnsSize))
     << "The activeColumns must be a sorted list of indices without duplicates.";
 
-  const vector<CellIdx> prevActiveCells = std::move(activeCells_);
+  vector<bool> prevActiveCellsDense(numberOfCells(), false);
+  for (CellIdx cell : activeCells_)
+  {
+    prevActiveCellsDense[cell] = true;
+  }
+  activeCells_.clear();
+
   const vector<CellIdx> prevWinnerCells = std::move(winnerCells_);
 
   const auto columnForSegment = [&](Segment segment)
@@ -507,7 +512,7 @@ void TemporalMemory::activateCells(
         activatePredictedColumn(
           activeCells_, winnerCells_, connections, rng_,
           columnActiveSegmentsBegin, columnActiveSegmentsEnd,
-          prevActiveCells, prevWinnerCells,
+          prevActiveCellsDense, prevWinnerCells,
           numActivePotentialSynapsesForSegment_,
           maxNewSynapseCount_,
           initialPermanence_, permanenceIncrement_, permanenceDecrement_,
@@ -518,7 +523,7 @@ void TemporalMemory::activateCells(
         burstColumn(
           activeCells_, winnerCells_, connections, rng_,
           column, columnMatchingSegmentsBegin, columnMatchingSegmentsEnd,
-          prevActiveCells, prevWinnerCells,
+          prevActiveCellsDense, prevWinnerCells,
           numActivePotentialSynapsesForSegment_,
           cellsPerColumn_, maxNewSynapseCount_,
           initialPermanence_, permanenceIncrement_, permanenceDecrement_,
@@ -532,7 +537,7 @@ void TemporalMemory::activateCells(
         punishPredictedColumn(
           connections,
           columnMatchingSegmentsBegin, columnMatchingSegmentsEnd,
-          prevActiveCells,
+          prevActiveCellsDense,
           predictedSegmentDecrement_);
       }
     }
@@ -552,11 +557,13 @@ void TemporalMemory::activateDendrites(bool learn)
 
   // Active segments, connected synapses.
   activeSegments_.clear();
-  for (size_t i = 0; i < numActiveConnectedSynapsesForSegment_.size(); i++)
+  for (Segment segment = 0;
+       segment < numActiveConnectedSynapsesForSegment_.size();
+       segment++)
   {
-    if (numActiveConnectedSynapsesForSegment_[i] >= activationThreshold_)
+    if (numActiveConnectedSynapsesForSegment_[segment] >= activationThreshold_)
     {
-      activeSegments_.push_back(connections.segmentForFlatIdx(i));
+      activeSegments_.push_back(segment);
     }
   }
   std::sort(activeSegments_.begin(), activeSegments_.end(),
@@ -567,11 +574,13 @@ void TemporalMemory::activateDendrites(bool learn)
 
   // Matching segments, potential synapses.
   matchingSegments_.clear();
-  for (size_t i = 0; i < numActivePotentialSynapsesForSegment_.size(); i++)
+  for (Segment segment = 0;
+       segment < numActivePotentialSynapsesForSegment_.size();
+       segment++)
   {
-    if (numActivePotentialSynapsesForSegment_[i] >= minThreshold_)
+    if (numActivePotentialSynapsesForSegment_[segment] >= minThreshold_)
     {
-      matchingSegments_.push_back(connections.segmentForFlatIdx(i));
+      matchingSegments_.push_back(segment);
     }
   }
   std::sort(matchingSegments_.begin(), matchingSegments_.end(),
@@ -635,7 +644,7 @@ vector<CellIdx> TemporalMemory::cellsForColumn(Int column)
 
 UInt TemporalMemory::numberOfCells(void)
 {
-  return numberOfColumns() * cellsPerColumn_;
+  return connections.numCells();
 }
 
 vector<CellIdx> TemporalMemory::getActiveCells() const
@@ -664,25 +673,6 @@ vector<CellIdx> TemporalMemory::getPredictiveCells() const
 vector<CellIdx> TemporalMemory::getWinnerCells() const
 {
   return winnerCells_;
-}
-
-vector<CellIdx> TemporalMemory::getMatchingCells() const
-{
-  vector<CellIdx> matchingCells;
-
-  for (auto segment = matchingSegments_.begin();
-       segment != matchingSegments_.end();
-       segment++)
-  {
-    CellIdx cell = connections.cellForSegment(*segment);
-    if (segment == matchingSegments_.begin() ||
-        cell != matchingCells.back())
-    {
-      matchingCells.push_back(cell);
-    }
-  }
-
-  return matchingCells;
 }
 
 vector<Segment> TemporalMemory::getActiveSegments() const
@@ -889,7 +879,7 @@ void TemporalMemory::save(ostream& outStream) const
 
     outStream << idx << " ";
     outStream << cell << " ";
-    outStream << numActiveConnectedSynapsesForSegment_[segment.flatIdx] << " ";
+    outStream << numActiveConnectedSynapsesForSegment_[segment] << " ";
   }
   outStream << endl;
 
@@ -905,7 +895,7 @@ void TemporalMemory::save(ostream& outStream) const
 
     outStream << idx << " ";
     outStream << cell << " ";
-    outStream << numActivePotentialSynapsesForSegment_[segment.flatIdx] << " ";
+    outStream << numActivePotentialSynapsesForSegment_[segment] << " ";
   }
   outStream << endl;
 
@@ -958,7 +948,7 @@ void TemporalMemory::write(TemporalMemoryProto::Builder& proto) const
     activeSegmentOverlaps[i].setCell(cell);
     activeSegmentOverlaps[i].setSegment(idx);
     activeSegmentOverlaps[i].setOverlap(
-      numActiveConnectedSynapsesForSegment_[segment.flatIdx]);
+      numActiveConnectedSynapsesForSegment_[segment]);
   }
 
   auto winnerCells = proto.initWinnerCells(winnerCells_.size());
@@ -983,7 +973,7 @@ void TemporalMemory::write(TemporalMemoryProto::Builder& proto) const
     matchingSegmentOverlaps[i].setCell(cell);
     matchingSegmentOverlaps[i].setSegment(idx);
     matchingSegmentOverlaps[i].setOverlap(
-      numActivePotentialSynapsesForSegment_[segment.flatIdx]);
+      numActivePotentialSynapsesForSegment_[segment]);
   }
 }
 
@@ -1040,7 +1030,7 @@ void TemporalMemory::read(TemporalMemoryProto::Reader& proto)
     const Segment segment = connections.getSegment(value.getCell(),
                                                    value.getSegment());
     activeSegments_.push_back(segment);
-    numActiveConnectedSynapsesForSegment_[segment.flatIdx] = value.getOverlap();
+    numActiveConnectedSynapsesForSegment_[segment] = value.getOverlap();
   }
 
   winnerCells_.clear();
@@ -1062,7 +1052,7 @@ void TemporalMemory::read(TemporalMemoryProto::Reader& proto)
     const Segment segment = connections.getSegment(value.getCell(),
                                                    value.getSegment());
     matchingSegments_.push_back(segment);
-    numActivePotentialSynapsesForSegment_[segment.flatIdx] = value.getOverlap();
+    numActivePotentialSynapsesForSegment_[segment] = value.getOverlap();
   }
 }
 
@@ -1153,11 +1143,11 @@ void TemporalMemory::load(istream& inStream)
 
     if (version < 2)
     {
-      numActiveConnectedSynapsesForSegment_[segment.flatIdx] = 0; // Unknown
+      numActiveConnectedSynapsesForSegment_[segment] = 0; // Unknown
     }
     else
     {
-      inStream >> numActiveConnectedSynapsesForSegment_[segment.flatIdx];
+      inStream >> numActiveConnectedSynapsesForSegment_[segment];
     }
   }
 
@@ -1177,11 +1167,11 @@ void TemporalMemory::load(istream& inStream)
 
     if (version < 2)
     {
-      numActivePotentialSynapsesForSegment_[segment.flatIdx] = 0; // Unknown
+      numActivePotentialSynapsesForSegment_[segment] = 0; // Unknown
     }
     else
     {
-      inStream >> numActivePotentialSynapsesForSegment_[segment.flatIdx];
+      inStream >> numActivePotentialSynapsesForSegment_[segment];
     }
   }
 

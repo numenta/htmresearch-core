@@ -5,7 +5,7 @@ using import "/nupic/proto/ConnectionsProto.capnp".ConnectionsProto;
 using import "/nupic/proto/ConnectionsProto.capnp".ConnectionsProto.SegmentOverlapProto;
 using import "/nupic/proto/RandomProto.capnp".RandomProto;
 
-# Next ID: 21
+# Next ID: 23
 struct ExtendedTemporalMemoryProto {
 
   columnDimensions @0 :List(UInt32);
@@ -33,4 +33,13 @@ struct ExtendedTemporalMemoryProto {
   matchingBasalSegmentOverlaps @18 :List(SegmentOverlapProto);
   activeApicalSegmentOverlaps @19 :List(SegmentOverlapProto);
   matchingApicalSegmentOverlaps @20 :List(SegmentOverlapProto);
+
+  learnOnOneCell @21 :Bool;
+  chosenCellForColumn @22 :List(ChosenCellPair);
+
+  # Next ID: 2
+  struct ChosenCellPair {
+    columnIdx @0 :UInt32;
+    cellIdx @1 :UInt32;
+  }
 }

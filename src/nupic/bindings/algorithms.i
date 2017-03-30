@@ -1,6 +1,6 @@
 /* ---------------------------------------------------------------------
  * Numenta Platform for Intelligent Computing (NuPIC)
- * Copyright (C) 2013-2015, Numenta, Inc.  Unless you have an agreement
+ * Copyright (C) 2013-2017, Numenta, Inc.  Unless you have an agreement
  * with Numenta, Inc., for a separate license for this software code, the
  * following terms and conditions apply:
  *
@@ -33,7 +33,7 @@ _ALGORITHMS = _algorithms
 %{
 /* ---------------------------------------------------------------------
  * Numenta Platform for Intelligent Computing (NuPIC)
- * Copyright (C) 2013-2015, Numenta, Inc.  Unless you have an agreement
+ * Copyright (C) 2013-2017, Numenta, Inc.  Unless you have an agreement
  * with Numenta, Inc., for a separate license for this software code, the
  * following terms and conditions apply:
  *
@@ -633,91 +633,6 @@ void forceRetentionOfImageSensorLiteLibrary(void) {
       *y_res++ = val;
     }
   }
-}
-
-//--------------------------------------------------------------------------------
-// LearningSet for continuous FDR TP
-//--------------------------------------------------------------------------------
-%extend nupic::algorithms::Inhibition
-{
-  %pythoncode %{
-
-    def __init__(self, *args):
-      this = _ALGORITHMS.new_Inhibition(*args)
-      try:
-        self.this.append(this)
-      except:
-        self.this = this
-  %}
-
-  inline
-    nupic::UInt32 compute(PyObject* py_x, PyObject* py_y, nupic::UInt32 stimulus_threshold,
-                          nupic::Real32 k =.95f)
-  {
-    PyArrayObject* _x = (PyArrayObject*) py_x;
-    CHECKSIZE(_x);
-    nupic::Real32* x = (nupic::Real32*)(PyArray_DATA(_x));
-
-    PyArrayObject* _y = (PyArrayObject*) py_y;
-    CHECKSIZE(_y);
-    nupic::UInt32* y = (nupic::UInt32*)(PyArray_DATA(_y));
-
-    return self->compute(x, y, stimulus_threshold, k);
-  }
-
-}; // end extend nupic::Inhibition
-
-//--------------------------------------------------------------------------------
-%extend nupic::algorithms::Inhibition2
-{
-  %pythoncode %{
-
-    def __init__(self, *args):
-      this = _ALGORITHMS.new_Inhibition2(*args)
-      try:
-        self.this.append(this)
-      except:
-        self.this = this
-  %}
-
-  inline
-    nupic::UInt32 compute(PyObject* py_x, PyObject* py_y,
-        nupic::Real32 stimulus_threshold, nupic::Real32 add_to_winners)
-  {
-    PyArrayObject* _x = (PyArrayObject*) py_x;
-    CHECKSIZE(_x);
-    nupic::Real32* x = (nupic::Real32*)(PyArray_DATA(_x));
-
-    PyArrayObject* _y = (PyArrayObject*) py_y;
-    CHECKSIZE(_y);
-    nupic::UInt32* y = (nupic::UInt32*)(PyArray_DATA(_y));
-
-    return self->compute(x, y, stimulus_threshold, add_to_winners);
-  }
-
-}; // end extend nupic::Inhibition2
-
-//--------------------------------------------------------------------------------
-%inline {
-
-inline PyObject* generate2DGaussianSample(nupic::UInt32 nrows, nupic::UInt32 ncols,
-                                          nupic::UInt32 nnzpr, nupic::UInt32 rf_x,
-                                          nupic::Real32 sigma,
-                                          nupic::Int32 seed =-1,
-                                          bool sorted =true)
-{
-  std::vector<std::pair<nupic::UInt32, nupic::Real32> > x;
-  nupic::gaussian_2d_pair_sample(nrows, ncols, nnzpr, rf_x, sigma, x,
-                               (nupic::Real32) 1.0f, seed, sorted);
-  PyObject* toReturn = PyList_New(nrows);
-  for (size_t i = 0; i != nrows; ++i) {
-    PyObject* one_master = PyList_New(nnzpr);
-    for (size_t j = 0; j != nnzpr; ++j)
-      PyList_SET_ITEM(one_master, j, PyInt_FromLong(x[i*nnzpr+j].first));
-    PyList_SET_ITEM(toReturn, i, one_master);
-  }
-  return toReturn;
-}
 }
 
 //--------------------------------------------------------------------------------
@@ -1642,9 +1557,7 @@ inline PyObject* generate2DGaussianSample(nupic::UInt32 nrows, nupic::UInt32 nco
 //--------------------------------------------------------------------------------
 // Data structures (Connections)
 %rename(ConnectionsSynapse) nupic::algorithms::connections::Synapse;
-%rename(ConnectionsSegment) nupic::algorithms::connections::Segment;
 %template(ConnectionsSynapseVector) vector<nupic::algorithms::connections::Synapse>;
-%template(ConnectionsSegmentVector) vector<nupic::algorithms::connections::Segment>;
 %feature("director") nupic::algorithms::connections::ConnectionsEventHandler;
 %include <nupic/algorithms/Connections.hpp>
 
@@ -1693,6 +1606,23 @@ inline PyObject* generate2DGaussianSample(nupic::UInt32 nrows, nupic::UInt32 nco
     throw std::logic_error(
         "Connections.read is not implemented when compiled with CAPNP_LITE=1.");
   %#endif
+  }
+
+  %pythoncode %{
+    def mapSegmentsToCells(self, segments):
+      segments = numpy.asarray(segments, dtype="uint32")
+      return self._mapSegmentsToCells(segments)
+  %}
+
+  PyObject* _mapSegmentsToCells(PyObject *py_segments) const
+  {
+    nupic::NumpyVectorWeakRefT<nupic::UInt32> segments(py_segments);
+
+    nupic::NumpyVectorT<nupic::UInt32> cellsOut(segments.size());
+    self->mapSegmentsToCells(segments.begin(), segments.end(),
+                             cellsOut.begin());
+
+    return cellsOut.forPython();
   }
 
 }
@@ -1850,32 +1780,56 @@ inline PyObject* generate2DGaussianSample(nupic::UInt32 nrows, nupic::UInt32 nco
 
   inline PyObject* getActiveCells()
   {
-    const vector<CellIdx> cellIdxs = self->getActiveCells();
-    return vectorToList(cellIdxs);
+    const vector<CellIdx> activeCells = self->getActiveCells();
+
+    return nupic::NumpyVectorT<nupic::UInt32>(
+      activeCells.size(), activeCells.data()
+    ).forPython();
   }
 
   inline PyObject* getPredictiveCells()
   {
-    const vector<CellIdx> cellIdxs = self->getPredictiveCells();
-    return vectorToList(cellIdxs);
+    const vector<CellIdx> predictiveCells = self->getPredictiveCells();
+
+    return nupic::NumpyVectorT<nupic::UInt32>(
+      predictiveCells.size(), predictiveCells.data()
+    ).forPython();
   }
 
   inline PyObject* getWinnerCells()
   {
-    const vector<CellIdx> cellIdxs = self->getWinnerCells();
-    return vectorToList(cellIdxs);
+    const vector<CellIdx> winnerCells = self->getWinnerCells();
+
+    return nupic::NumpyVectorT<nupic::UInt32>(
+      winnerCells.size(), winnerCells.data()
+    ).forPython();
   }
 
-  inline PyObject* getMatchingCells()
+  inline PyObject* getActiveSegments()
   {
-    const vector<CellIdx> cellIdxs = self->getMatchingCells();
-    return vectorToList(cellIdxs);
+    const vector<UInt32> activeSegments = self->getActiveSegments();
+
+    return nupic::NumpyVectorT<nupic::UInt32>(
+      activeSegments.size(), activeSegments.data()
+    ).forPython();
+  }
+
+  inline PyObject* getMatchingSegments()
+  {
+    const vector<UInt32> matchingSegments = self->getMatchingSegments();
+
+    return nupic::NumpyVectorT<nupic::UInt32>(
+      matchingSegments.size(), matchingSegments.data()
+    ).forPython();
   }
 
   inline PyObject* cellsForColumn(UInt columnIdx)
   {
-    const vector<CellIdx> cellIdxs = self->cellsForColumn(columnIdx);
-    return vectorToList(cellIdxs);
+    const vector<CellIdx> cells = self->cellsForColumn(columnIdx);
+
+    return nupic::NumpyVectorT<nupic::UInt32>(
+      cells.size(), cells.data()
+    ).forPython();
   }
 
   inline void convertedActivateCells(PyObject *py_activeColumns,
@@ -1951,7 +1905,8 @@ inline PyObject* generate2DGaussianSample(nupic::UInt32 nrows, nupic::UInt32 nco
 %ignore nupic::algorithms::temporal_memory::TemporalMemory::getActiveCells;
 %ignore nupic::algorithms::temporal_memory::TemporalMemory::getPredictiveCells;
 %ignore nupic::algorithms::temporal_memory::TemporalMemory::getWinnerCells;
-%ignore nupic::algorithms::temporal_memory::TemporalMemory::getMatchingCells;
+%ignore nupic::algorithms::temporal_memory::TemporalMemory::getActiveSegments;
+%ignore nupic::algorithms::temporal_memory::TemporalMemory::getMatchingSegments;
 %ignore nupic::algorithms::temporal_memory::TemporalMemory::cellsForColumn;
 
 

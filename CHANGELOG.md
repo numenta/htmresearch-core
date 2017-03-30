@@ -1,5 +1,35 @@
 # Changelog
 
+## 0.6.0
+
+* NUP-2366 Remove no-longer-relevent test code
+* NUP-2366 Do not pass arguments in initialize, remove conflicting docstring
+* Add a unit test for mapSegmentsToCells
+* Change segments to UInt32 to speed up the bindings
+* Fix up fetch_remote script to properly poll until the build is complete.
+* Updates to tests moved over from nupic
+* removed shebangs
+* Changed all copyright headers on all files to AGPL.
+* Tests folder refactored
+* Reads version from VERSION for doc output
+* Fixing travis-ci unit tests
+* Doxygen only creates XML, used by Breathe to create docs.
+
+## 0.5.3
+
+* Added comment explaining the nuance of the static variables in Cells4::adaptSegment
+* Improved explanation of containers in Cells4::adaptSegment implementation.
+* Regenerate SWIG bindings C++ files if any headers change.
+* Enable -D_LIBCPP_DEBUG=0 for debug-lite in Clang builds (e.g., OS X). NOTE: Clan't debug mode is not mature, and anything above level 0 appears to require debug build of libc++ during linking, which it not present by default on OS X.
+* Fixed deletion of wrong synapses and index-out-of-bounds in Cells4::adaptSegment/Segment::freeNSynapses.
+* corrected typo in CHANGELOG.md (boostingStrength -> boostStrength)
+* Remove ExtendedTemporalMemory proto
+* Fix bug in unit test, make TM catch this bug in DEBUG builds
+* Perf: Densify prevActiveCells rather than binary searching
+* Get POC of OS X build on circle.ci up and running.
+* Bump version to prerelease.
+
+
 ## 0.5.1
 
 * Improved network API introspection
@@ -25,7 +55,7 @@
 ## 0.4.16
 
 * SpatialPooler: Stop rounding the boost factors
-* SpatialPooler: Rename "maxBoost" to "boostingStrength"
+* SpatialPooler: Rename "maxBoost" to "boostStrength"
 * SpatialPooler: Remove minActiveDutyCycles and minPctActiveDutyCycles from spatial pooler
 
 ## 0.4.15
