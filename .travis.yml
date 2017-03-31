@@ -53,7 +53,3 @@ script:
   - "cd $TRAVIS_BUILD_DIR"
   # run python tests
   - "py.test ${TRAVIS_BUILD_DIR}/bindings/py/tests"
-  # output unit tests report
-  - "cd $TRAVIS_BUILD_DIR/build/artifacts/"
-  # transform the JUnit-style xml report to html
-  - "xsltproc $TRAVIS_BUILD_DIR/docs/xunit.xslt unit_tests_report.xml > unit_tests_report.html"
