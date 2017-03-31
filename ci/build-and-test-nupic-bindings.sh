@@ -139,20 +139,6 @@ pip install ${PIP_USER} \
     --ignore-installed \
     ${DEST_WHEELHOUSE}/htmresearch_core-*.whl
 
-# Run the nupic.core c++ tests
-cd ${NUPIC_CORE_ROOT}/build/release/bin
-./cpp_region_test
-./py_region_test
-./unit_tests
-
-# These are utilities or demonstration executables so leave out of main build
-# to keep build times down.
-#./connections_performance_test
-#./hello_sp_tp
-#./helloregion
-#./prototest
-
-
 # Run nupic.bindings python tests
 
 mkdir ${TEST_RESULTS_DIR}
