@@ -568,6 +568,7 @@ add_executable(${src_executable_gtests}
                test/unit/algorithms/TemporalMemoryTest.cpp
                test/unit/encoders/ScalarEncoderTest.cpp
                test/unit/engine/InputTest.cpp
+               test/unit/engine/LinkTest.cpp
                test/unit/engine/NetworkTest.cpp
                test/unit/engine/UniformLinkPolicyTest.cpp
                test/unit/engine/YAMLUtilsTest.cpp
@@ -864,40 +865,43 @@ install(TARGETS
         LIBRARY DESTINATION lib
         ARCHIVE DESTINATION lib)
 
-install(DIRECTORY nupic/ DESTINATION include/nupic
-        FILES_MATCHING PATTERN "*.h*"
-        PATTERN "*.hpp.in" EXCLUDE)
-install(DIRECTORY nupic/ DESTINATION include/nupic
-        FILES_MATCHING PATTERN "*.capnp")
-install(DIRECTORY ${PROJECT_BINARY_DIR}/nupic/ DESTINATION include/nupic/
-        FILES_MATCHING PATTERN "*.capnp.h")
-
-install(DIRECTORY ${REPOSITORY_DIR}/external/common/include/gtest
-        DESTINATION include/gtest
-        FILES_MATCHING PATTERN "*.h*")
-
+# Version.hpp is also used by the nupic.bindings release/deployment system
 install(FILES ${PROJECT_BINARY_DIR}/Version.hpp
         DESTINATION include/nupic/)
 
-install(DIRECTORY "${REPOSITORY_DIR}/external/common/include/"
-        DESTINATION include)
+if (NOT NUPIC_BUILD_PYEXT_MODULES)
+  install(DIRECTORY nupic/ DESTINATION include/nupic
+          FILES_MATCHING PATTERN "*.h*"
+          PATTERN "*.hpp.in" EXCLUDE)
+  install(DIRECTORY nupic/ DESTINATION include/nupic
+          FILES_MATCHING PATTERN "*.capnp")
+  install(DIRECTORY ${PROJECT_BINARY_DIR}/nupic/ DESTINATION include/nupic/
+          FILES_MATCHING PATTERN "*.capnp.h")
 
-install(DIRECTORY "${src_numpy_core}/lib/"
-        DESTINATION lib)
-install(DIRECTORY "${src_numpy_core}/include/"
-        DESTINATION include)
+  install(DIRECTORY ${REPOSITORY_DIR}/external/common/include/gtest
+          DESTINATION include/gtest
+          FILES_MATCHING PATTERN "*.h*")
 
-foreach(directory ${CAPNP_INCLUDE_DIRS})
-  install(DIRECTORY "${directory}/capnp"
+  install(DIRECTORY "${REPOSITORY_DIR}/external/common/include/"
           DESTINATION include)
-  install(DIRECTORY "${directory}/kj"
-          DESTINATION include)
-endforeach()
 
-install(DIRECTORY nupic/py_support DESTINATION include/nupic
-        FILES_MATCHING PATTERN "*.c*")
-install(DIRECTORY nupic DESTINATION include/nupic
-        FILES_MATCHING PATTERN "*.py")
+  install(DIRECTORY "${src_numpy_core}/lib/"
+          DESTINATION lib)
+  install(DIRECTORY "${src_numpy_core}/include/"
+          DESTINATION include)
+
+  foreach(directory ${CAPNP_INCLUDE_DIRS})
+    install(DIRECTORY "${directory}/capnp"
+            DESTINATION include)
+    install(DIRECTORY "${directory}/kj"
+            DESTINATION include)
+  endforeach()
+
+  install(DIRECTORY nupic/py_support DESTINATION include/nupic
+          FILES_MATCHING PATTERN "*.c*")
+  install(DIRECTORY nupic DESTINATION include/nupic
+          FILES_MATCHING PATTERN "*.py")
+endif (NOT NUPIC_BUILD_PYEXT_MODULES)
 
 #
 # `make package` results in
