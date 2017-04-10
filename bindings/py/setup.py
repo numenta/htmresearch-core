@@ -80,7 +80,7 @@ if __name__ == "__main__":
     shutil.copy(protoPath, destDir)
 
   setup(
-    name="htmresearch-core",
+    name="htmresearch_core",
     packages=find_packages(),
     package_data={
       "htmresearch_core.proto": ["*.capnp"],
