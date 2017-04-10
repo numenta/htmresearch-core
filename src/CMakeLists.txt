@@ -841,7 +841,6 @@ if (NUPIC_BUILD_PYEXT_MODULES)
       "extra_deps=${extra_deps}, link_flags=${link_flags}")
   endfunction(BUILD_EXTENSION)
 
-
   # Experimental
   build_extension("experimental")
 

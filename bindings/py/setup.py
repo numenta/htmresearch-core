@@ -81,6 +81,7 @@ if __name__ == "__main__":
 
   setup(
     name="htmresearch-core",
+    install_requires=findRequirements(platform),
     packages=find_packages(),
     package_data={
       "htmresearch_core.proto": ["*.capnp"],
