@@ -334,6 +334,16 @@ using namespace nupic;
     ).forPython();
   }
 
+  inline PyObject* getPredictedActiveCells()
+  {
+    const vector<CellIdx> predictedActiveCells =
+      self->getPredictedActiveCells();
+
+    return nupic::NumpyVectorT<nupic::UInt32>(
+      predictedActiveCells.size(), predictedActiveCells.data()
+    ).forPython();
+  }
+
   inline PyObject* getPredictiveCells()
   {
     const vector<CellIdx> predictiveCells = self->getPredictiveCells();
@@ -482,6 +492,7 @@ using namespace nupic;
 }
 
 %ignore nupic::experimental::extended_temporal_memory::ExtendedTemporalMemory::getActiveCells;
+%ignore nupic::experimental::extended_temporal_memory::ExtendedTemporalMemory::getPredictedActiveCells;
 %ignore nupic::experimental::extended_temporal_memory::ExtendedTemporalMemory::getPredictiveCells;
 %ignore nupic::experimental::extended_temporal_memory::ExtendedTemporalMemory::getWinnerCells;
 %ignore nupic::experimental::extended_temporal_memory::ExtendedTemporalMemory::cellsForColumn;
