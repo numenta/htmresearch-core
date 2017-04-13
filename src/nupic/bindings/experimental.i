@@ -87,10 +87,6 @@ using namespace nupic;
 
 %}
 
-%pythoncode %{
-  uintDType = "uint32"
-%}
-
 %naturalvar;
 
 //--------------------------------------------------------------------------------
@@ -117,16 +113,6 @@ using namespace nupic;
   # will get a SwigPyObject rather than a SWIG-wrapped Connections instance
   # when accessing the ExtendedTemporalMemory's connections.
   import nupic.bindings.algorithms
-
-
-  def _asNumpyArray(iterable, dtype):
-    if isinstance(iterable, numpy.ndarray):
-      if iterable.dtype == dtype:
-        return iterable
-      else:
-        return iterable.astype(dtype)
-    else:
-      return numpy.array(list(iterable), dtype=dtype)
 
 %}
 
@@ -225,14 +211,14 @@ using namespace nupic;
       @param learn (boolean)
       Whether to grow / reinforce / punish synapses.
       """
-      columnsArray = numpy.array(sorted(activeColumns), dtype=uintDType)
+      columnsArray = numpy.array(sorted(activeColumns), "uint32")
 
       self.convertedActivateCells(
-          _asNumpyArray(activeColumns, uintDType),
-          _asNumpyArray(reinforceCandidatesExternalBasal, uintDType),
-          _asNumpyArray(reinforceCandidatesExternalApical, uintDType),
-          _asNumpyArray(growthCandidatesExternalBasal, uintDType),
-          _asNumpyArray(growthCandidatesExternalApical, uintDType),
+          numpy.asarray(activeColumns, "uint32"),
+          numpy.asarray(reinforceCandidatesExternalBasal, "uint32"),
+          numpy.asarray(reinforceCandidatesExternalApical, "uint32"),
+          numpy.asarray(growthCandidatesExternalBasal, "uint32"),
+          numpy.asarray(growthCandidatesExternalApical, "uint32"),
           learn)
 
 
@@ -256,8 +242,8 @@ using namespace nupic;
       """
 
       self.convertedDepolarizeCells(
-          _asNumpyArray(activeCellsExternalBasal, uintDType),
-          _asNumpyArray(activeCellsExternalApical, uintDType),
+          numpy.asarray(activeCellsExternalBasal, "uint32"),
+          numpy.asarray(activeCellsExternalApical, "uint32"),
           learn)
 
 
@@ -341,20 +327,29 @@ using namespace nupic;
 
   inline PyObject* getActiveCells()
   {
-    const vector<CellIdx> cellIdxs = self->getActiveCells();
-    return vectorToList(cellIdxs);
+    const vector<CellIdx> activeCells = self->getActiveCells();
+
+    return nupic::NumpyVectorT<nupic::UInt32>(
+      activeCells.size(), activeCells.data()
+    ).forPython();
   }
 
   inline PyObject* getPredictiveCells()
   {
-    const vector<CellIdx> cellIdxs = self->getPredictiveCells();
-    return vectorToList(cellIdxs);
+    const vector<CellIdx> predictiveCells = self->getPredictiveCells();
+
+    return nupic::NumpyVectorT<nupic::UInt32>(
+      predictiveCells.size(), predictiveCells.data()
+    ).forPython();
   }
 
   inline PyObject* getWinnerCells()
   {
-    const vector<CellIdx> cellIdxs = self->getWinnerCells();
-    return vectorToList(cellIdxs);
+    const vector<CellIdx> winnerCells = self->getWinnerCells();
+
+    return nupic::NumpyVectorT<nupic::UInt32>(
+      winnerCells.size(), winnerCells.data()
+    ).forPython();
   }
 
   inline PyObject* cellsForColumn(UInt columnIdx)
