@@ -2,34 +2,6 @@ import os
 import shutil
 from setuptools import setup, find_packages
 from distutils.core import Extension
-import pkg_resources
-
-
-def nupicBindingsPrereleaseInstalled():
-  """
-  Make an attempt to determine if a pre-release version of nupic.bindings is
-  installed already.
-  @return: boolean
-  """
-  try:
-    nupicDistribution = pkg_resources.get_distribution("nupic.bindings")
-    if pkg_resources.parse_version(nupicDistribution.version).is_prerelease:
-      # A pre-release dev version of nupic.bindings is installed.
-      return True
-  except pkg_resources.DistributionNotFound:
-    pass  # Silently ignore.  The absence of nupic.bindings will be handled by
-    # setuptools by default
-
-  # Also check for nupic.research.bindings
-  try:
-    nupicDistribution = pkg_resources.get_distribution(
-      "nupic.research.bindings")
-    return True
-  except pkg_resources.DistributionNotFound:
-    pass  # Silently ignore.  The absence of nupic.bindings will be handled by
-    # setuptools by default
-
-  return False
 
 
 
@@ -50,18 +22,10 @@ def findRequirements():
   Read the requirements.txt file and parse into requirements for setup's
   install_requirements option.
   """
+  PY_BINDINGS = os.path.dirname(os.path.realpath(__file__))
+  REPO_DIR = os.path.abspath(os.path.join(PY_BINDINGS, os.pardir, os.pardir))
   requirementsPath = os.path.join(REPO_DIR, "requirements.txt")
-  requirements = parse_file(requirementsPath)
-
-  if nupicBindingsPrereleaseInstalled():
-    # User has a pre-release version of nupic.bindings installed, which is only
-    # possible if the user installed and built nupic.bindings from source and
-    # it is up to the user to decide when to update nupic.bindings.  We'll
-    # quietly remove the entry in requirements.txt so as to not conflate the
-    # two.
-    requirements = [req for req in requirements if "nupic.bindings" not in req]
-
-  return requirements
+  return parse_file(requirementsPath)
 
 
 
@@ -80,7 +44,9 @@ if __name__ == "__main__":
     shutil.copy(protoPath, destDir)
 
   setup(
-    name="htmresearch_core",
+    # setuptools replaces "_" with "-", so package name is "htmresearch-core",
+    # import namespace "htmresearch_core".
+    name="htmresearch-core",
     packages=find_packages(),
     package_data={
       "htmresearch_core.proto": ["*.capnp"],
