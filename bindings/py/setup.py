@@ -2,6 +2,8 @@ import os
 import shutil
 from setuptools import setup, find_packages
 from distutils.core import Extension
+import pkg_resources
+
 
 
 def nupicBindingsPrereleaseInstalled():
