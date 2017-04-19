@@ -78,24 +78,14 @@ BUILD_TYPE=${BUILD_TYPE-"Release"}
 
 NUPIC_CORE_ROOT="$( cd "$( dirname "${BASH_SOURCE[0]}" )/.." && pwd )"
 
-DEST_WHEELHOUSE="${NUPIC_CORE_ROOT}/nupic_bindings_wheelhouse"
-
 TEST_RESULTS_DIR="${NUPIC_CORE_ROOT}/test_results"
 
-echo "RUNNING NUPIC BINDINGS BUILD: BUILD_TYPE=${BUILD_TYPE}, " \
-     "DEST_WHEELHOUSE=${DEST_WHEELHOUSE}" >&2
+echo "RUNNING NUPIC BINDINGS BUILD: BUILD_TYPE=${BUILD_TYPE}, " >&2
 
 # Install pycapnp to get the matching capnproto headers for nupic.core build
 # NOTE Conditional pycapnp dependency should be incorporated into
 # bindings/py/requirements.txt to abstract it from upstream scripts.
 pip install pycapnp==0.5.8
-
-# Install nupic.bindings dependencies; the nupic.core cmake build depends on
-# some of them (e.g., numpy).
-pip install \
-    --ignore-installed \
-    --timeout=30 \
-    -r ${NUPIC_CORE_ROOT}/bindings/py/requirements.txt
 
 #
 # Build nupic.bindings
@@ -116,7 +106,7 @@ cmake ${NUPIC_CORE_ROOT} \
     -DCMAKE_BUILD_TYPE=${BUILD_TYPE} \
     ${EXTRA_CMAKE_DEFINITIONS} \
     -DCMAKE_INSTALL_PREFIX=${NUPIC_CORE_ROOT}/build/release \
-    -DPY_EXTENSIONS_DIR=${NUPIC_CORE_ROOT}/bindings/py/nupic/bindings
+    -DPY_EXTENSIONS_DIR=${NUPIC_CORE_ROOT}/bindings/py/htmresearch_core
 
 # Build nupic.core
 make install
@@ -127,31 +117,11 @@ if [[ $WHEEL_PLAT ]]; then
 fi
 
 cd ${NUPIC_CORE_ROOT}
-python setup.py bdist_wheel --dist-dir ${DEST_WHEELHOUSE} ${EXTRA_WHEEL_OPTIONS}
-
+python setup.py develop
 
 #
 # Test
 #
-
-# Install nupic.bindings before running c++ tests; py_region_test depends on it
-pip install ${PIP_USER} \
-    --ignore-installed \
-    ${DEST_WHEELHOUSE}/nupic.bindings-*.whl
-
-# Run the nupic.core c++ tests
-cd ${NUPIC_CORE_ROOT}/build/release/bin
-./cpp_region_test
-./py_region_test
-./unit_tests
-
-# These are utilities or demonstration executables so leave out of main build
-# to keep build times down.
-#./connections_performance_test
-#./hello_sp_tp
-#./helloregion
-#./prototest
-
 
 # Run nupic.bindings python tests
 
