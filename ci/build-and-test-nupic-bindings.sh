@@ -78,12 +78,9 @@ BUILD_TYPE=${BUILD_TYPE-"Release"}
 
 NUPIC_CORE_ROOT="$( cd "$( dirname "${BASH_SOURCE[0]}" )/.." && pwd )"
 
-DEST_WHEELHOUSE="${NUPIC_CORE_ROOT}/nupic_bindings_wheelhouse"
-
 TEST_RESULTS_DIR="${NUPIC_CORE_ROOT}/test_results"
 
-echo "RUNNING NUPIC BINDINGS BUILD: BUILD_TYPE=${BUILD_TYPE}, " \
-     "DEST_WHEELHOUSE=${DEST_WHEELHOUSE}" >&2
+echo "RUNNING NUPIC BINDINGS BUILD: BUILD_TYPE=${BUILD_TYPE}, " >&2
 
 # Install pycapnp to get the matching capnproto headers for nupic.core build
 # NOTE Conditional pycapnp dependency should be incorporated into
@@ -120,17 +117,11 @@ if [[ $WHEEL_PLAT ]]; then
 fi
 
 cd ${NUPIC_CORE_ROOT}
-python setup.py bdist_wheel --dist-dir ${DEST_WHEELHOUSE} ${EXTRA_WHEEL_OPTIONS}
-
+python setup.py develop
 
 #
 # Test
 #
-
-# Install nupic.bindings before running c++ tests; py_region_test depends on it
-pip install ${PIP_USER} \
-    --ignore-installed \
-    ${DEST_WHEELHOUSE}/htmresearch_core-*.whl
 
 # Run nupic.bindings python tests
 
