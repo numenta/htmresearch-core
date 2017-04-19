@@ -90,13 +90,6 @@ echo "RUNNING NUPIC BINDINGS BUILD: BUILD_TYPE=${BUILD_TYPE}, " \
 # bindings/py/requirements.txt to abstract it from upstream scripts.
 pip install pycapnp==0.5.8
 
-# Install nupic.bindings dependencies; the nupic.core cmake build depends on
-# some of them (e.g., numpy).
-pip install \
-    --ignore-installed \
-    --timeout=30 \
-    -r ${NUPIC_CORE_ROOT}/bindings/py/requirements.txt
-
 #
 # Build nupic.bindings
 #
