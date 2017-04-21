@@ -28,8 +28,8 @@ import unittest
 
 import capnp
 
-from nupic.bindings.experimental import ExtendedTemporalMemory
-from nupic.proto.ExtendedTemporalMemoryProto_capnp import ExtendedTemporalMemoryProto
+from htmresearch_core.experimental import ExtendedTemporalMemory
+from htmresearch_core.proto.ExtendedTemporalMemoryProto_capnp import ExtendedTemporalMemoryProto
 
 
 

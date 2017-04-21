@@ -20,7 +20,7 @@
  * ---------------------------------------------------------------------
  */
 
-%module(package="bindings") experimental
+%module(package="htmresearch_core") experimental
 %import <nupic/bindings/algorithms.i>
 
 %pythoncode %{
