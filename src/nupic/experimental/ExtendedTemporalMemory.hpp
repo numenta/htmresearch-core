@@ -428,6 +428,13 @@ namespace nupic {
         vector<CellIdx> getPredictiveCells() const;
 
         /**
+         * Returns the indices of the active cells that were predicted.
+         *
+        * @returns Indices of predicted active cells.
+         */
+        vector<CellIdx> getPredictedActiveCells() const;
+
+        /**
         * Returns the indices of the winner cells.
         *
         * @returns (std::vector<CellIdx>) Vector of indices of winner cells.
@@ -650,6 +657,7 @@ namespace nupic {
         Permanence predictedSegmentDecrement_;
 
         vector<CellIdx> activeCells_;
+        vector<CellIdx> predictedActiveCells_;
         vector<CellIdx> winnerCells_;
 
         vector<Segment> activeBasalSegments_;

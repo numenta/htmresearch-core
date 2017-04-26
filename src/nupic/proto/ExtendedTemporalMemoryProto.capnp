@@ -5,7 +5,7 @@ using import "/nupic/proto/ConnectionsProto.capnp".ConnectionsProto;
 using import "/nupic/proto/ConnectionsProto.capnp".ConnectionsProto.SegmentOverlapProto;
 using import "/nupic/proto/RandomProto.capnp".RandomProto;
 
-# Next ID: 23
+# Next ID: 24
 struct ExtendedTemporalMemoryProto {
 
   columnDimensions @0 :List(UInt32);
@@ -27,6 +27,7 @@ struct ExtendedTemporalMemoryProto {
   # Lists of indices
   activeCells @14 :List(UInt32);
   winnerCells @15 :List(UInt32);
+  predictedActiveCells @23 :List(UInt32);
 
   predictedSegmentDecrement @16 :Float32;
   activeBasalSegmentOverlaps @17 :List(SegmentOverlapProto);
