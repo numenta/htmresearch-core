@@ -491,30 +491,6 @@ using namespace nupic;
                           learn);
   }
 
-  inline void write(PyObject* pyBuilder) const
-  {
-%#if !CAPNP_LITE
-    ExtendedTemporalMemoryProto::Builder proto =
-        getBuilder<ExtendedTemporalMemoryProto>(pyBuilder);
-    self->write(proto);
-  %#else
-    throw std::logic_error(
-        "ExtendedTemporalMemory.write is not implemented when compiled with CAPNP_LITE=1.");
-  %#endif
-  }
-
-  inline void convertedRead(PyObject* pyReader)
-  {
-%#if !CAPNP_LITE
-    ExtendedTemporalMemoryProto::Reader proto =
-        getReader<ExtendedTemporalMemoryProto>(pyReader);
-    self->read(proto);
-  %#else
-    throw std::logic_error(
-        "ExtendedTemporalMemory.read is not implemented when compiled with CAPNP_LITE=1.");
-  %#endif
-  }
-
   void loadFromString(const std::string& inString)
   {
     std::istringstream inStream(inString);
