@@ -26,6 +26,17 @@
 %pythoncode %{
 import os
 
+try:
+  # NOTE need to import capnp first to activate the magic necessary for
+  # ExtendedTemporalMemoryProto_capnp, etc.
+  import capnp
+except ImportError:
+  capnp = None
+else:
+  from htmresearch_core.proto.ExtendedTemporalMemoryProto_capnp import \
+       ExtendedTemporalMemoryProto
+
+
 _EXPERIMENTAL = _experimental
 %}
 
@@ -323,7 +334,38 @@ using namespace nupic;
       instance = cls()
       instance.convertedRead(proto)
       return instance
+
+    def write(self, pyBuilder):
+      """Serialize the ExtendedTemporalMemory instance using capnp.
+
+      :param: Destination ExtendedTemporalMemoryProto message builder
+      """
+      reader = ExtendedTemporalMemoryProto.from_bytes(
+        self._writeAsCapnpPyBytes()) # copy
+      pyBuilder.from_dict(reader.to_dict())  # copy
+
+
+    def convertedRead(self, proto):
+      """Initialize the ExtendedTemporalMemory instance from the given
+      ExtendedTemporalMemoryProto reader.
+
+      :param proto: ExtendedTemporalMemoryProto message reader containing data
+                    from a previously serialized ExtendedTemporalMemory
+                    instance.
+
+      """
+      self._initFromCapnpPyBytes(proto.as_builder().to_bytes()) # copy * 2
   %}
+
+  inline PyObject* _writeAsCapnpPyBytes() const
+  {
+    return nupic::PyCapnpHelper::writeAsPyBytes(*self);
+  }
+
+  inline void _initFromCapnpPyBytes(PyObject* pyBytes)
+  {
+    nupic::PyCapnpHelper::initFromPyBytes(*self, pyBytes);
+  }
 
   inline PyObject* getActiveCells()
   {
