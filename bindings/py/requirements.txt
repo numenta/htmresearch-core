@@ -4,3 +4,4 @@ pytest-cov==1.6
 pytest-xdist==1.8
 numpy==1.11.2
 nupic.bindings==0.6.0
+pycapnp==0.5.8
