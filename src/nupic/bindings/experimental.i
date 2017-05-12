@@ -26,6 +26,17 @@
 %pythoncode %{
 import os
 
+try:
+  # NOTE need to import capnp first to activate the magic necessary for
+  # ExtendedTemporalMemoryProto_capnp, etc.
+  import capnp
+except ImportError:
+  capnp = None
+else:
+  from htmresearch_core.proto.ExtendedTemporalMemoryProto_capnp import \
+       ExtendedTemporalMemoryProto
+
+
 _EXPERIMENTAL = _experimental
 %}
 
@@ -87,10 +98,6 @@ using namespace nupic;
 
 %}
 
-%pythoncode %{
-  uintDType = "uint32"
-%}
-
 %naturalvar;
 
 //--------------------------------------------------------------------------------
@@ -117,16 +124,6 @@ using namespace nupic;
   # will get a SwigPyObject rather than a SWIG-wrapped Connections instance
   # when accessing the ExtendedTemporalMemory's connections.
   import nupic.bindings.algorithms
-
-
-  def _asNumpyArray(iterable, dtype):
-    if isinstance(iterable, numpy.ndarray):
-      if iterable.dtype == dtype:
-        return iterable
-      else:
-        return iterable.astype(dtype)
-    else:
-      return numpy.array(list(iterable), dtype=dtype)
 
 %}
 
@@ -225,14 +222,14 @@ using namespace nupic;
       @param learn (boolean)
       Whether to grow / reinforce / punish synapses.
       """
-      columnsArray = numpy.array(sorted(activeColumns), dtype=uintDType)
+      columnsArray = numpy.array(sorted(activeColumns), "uint32")
 
       self.convertedActivateCells(
-          _asNumpyArray(activeColumns, uintDType),
-          _asNumpyArray(reinforceCandidatesExternalBasal, uintDType),
-          _asNumpyArray(reinforceCandidatesExternalApical, uintDType),
-          _asNumpyArray(growthCandidatesExternalBasal, uintDType),
-          _asNumpyArray(growthCandidatesExternalApical, uintDType),
+          numpy.asarray(activeColumns, "uint32"),
+          numpy.asarray(reinforceCandidatesExternalBasal, "uint32"),
+          numpy.asarray(reinforceCandidatesExternalApical, "uint32"),
+          numpy.asarray(growthCandidatesExternalBasal, "uint32"),
+          numpy.asarray(growthCandidatesExternalApical, "uint32"),
           learn)
 
 
@@ -256,8 +253,8 @@ using namespace nupic;
       """
 
       self.convertedDepolarizeCells(
-          _asNumpyArray(activeCellsExternalBasal, uintDType),
-          _asNumpyArray(activeCellsExternalApical, uintDType),
+          numpy.asarray(activeCellsExternalBasal, "uint32"),
+          numpy.asarray(activeCellsExternalApical, "uint32"),
           learn)
 
 
@@ -337,24 +334,74 @@ using namespace nupic;
       instance = cls()
       instance.convertedRead(proto)
       return instance
+
+    def write(self, pyBuilder):
+      """Serialize the ExtendedTemporalMemory instance using capnp.
+
+      :param: Destination ExtendedTemporalMemoryProto message builder
+      """
+      reader = ExtendedTemporalMemoryProto.from_bytes(
+        self._writeAsCapnpPyBytes()) # copy
+      pyBuilder.from_dict(reader.to_dict())  # copy
+
+
+    def convertedRead(self, proto):
+      """Initialize the ExtendedTemporalMemory instance from the given
+      ExtendedTemporalMemoryProto reader.
+
+      :param proto: ExtendedTemporalMemoryProto message reader containing data
+                    from a previously serialized ExtendedTemporalMemory
+                    instance.
+
+      """
+      self._initFromCapnpPyBytes(proto.as_builder().to_bytes()) # copy * 2
   %}
+
+  inline PyObject* _writeAsCapnpPyBytes() const
+  {
+    return nupic::PyCapnpHelper::writeAsPyBytes(*self);
+  }
+
+  inline void _initFromCapnpPyBytes(PyObject* pyBytes)
+  {
+    nupic::PyCapnpHelper::initFromPyBytes(*self, pyBytes);
+  }
 
   inline PyObject* getActiveCells()
   {
-    const vector<CellIdx> cellIdxs = self->getActiveCells();
-    return vectorToList(cellIdxs);
+    const vector<CellIdx> activeCells = self->getActiveCells();
+
+    return nupic::NumpyVectorT<nupic::UInt32>(
+      activeCells.size(), activeCells.data()
+    ).forPython();
+  }
+
+  inline PyObject* getPredictedActiveCells()
+  {
+    const vector<CellIdx> predictedActiveCells =
+      self->getPredictedActiveCells();
+
+    return nupic::NumpyVectorT<nupic::UInt32>(
+      predictedActiveCells.size(), predictedActiveCells.data()
+    ).forPython();
   }
 
   inline PyObject* getPredictiveCells()
   {
-    const vector<CellIdx> cellIdxs = self->getPredictiveCells();
-    return vectorToList(cellIdxs);
+    const vector<CellIdx> predictiveCells = self->getPredictiveCells();
+
+    return nupic::NumpyVectorT<nupic::UInt32>(
+      predictiveCells.size(), predictiveCells.data()
+    ).forPython();
   }
 
   inline PyObject* getWinnerCells()
   {
-    const vector<CellIdx> cellIdxs = self->getWinnerCells();
-    return vectorToList(cellIdxs);
+    const vector<CellIdx> winnerCells = self->getWinnerCells();
+
+    return nupic::NumpyVectorT<nupic::UInt32>(
+      winnerCells.size(), winnerCells.data()
+    ).forPython();
   }
 
   inline PyObject* cellsForColumn(UInt columnIdx)
@@ -444,30 +491,6 @@ using namespace nupic;
                           learn);
   }
 
-  inline void write(PyObject* pyBuilder) const
-  {
-%#if !CAPNP_LITE
-    ExtendedTemporalMemoryProto::Builder proto =
-        getBuilder<ExtendedTemporalMemoryProto>(pyBuilder);
-    self->write(proto);
-  %#else
-    throw std::logic_error(
-        "ExtendedTemporalMemory.write is not implemented when compiled with CAPNP_LITE=1.");
-  %#endif
-  }
-
-  inline void convertedRead(PyObject* pyReader)
-  {
-%#if !CAPNP_LITE
-    ExtendedTemporalMemoryProto::Reader proto =
-        getReader<ExtendedTemporalMemoryProto>(pyReader);
-    self->read(proto);
-  %#else
-    throw std::logic_error(
-        "ExtendedTemporalMemory.read is not implemented when compiled with CAPNP_LITE=1.");
-  %#endif
-  }
-
   void loadFromString(const std::string& inString)
   {
     std::istringstream inStream(inString);
@@ -487,6 +510,7 @@ using namespace nupic;
 }
 
 %ignore nupic::experimental::extended_temporal_memory::ExtendedTemporalMemory::getActiveCells;
+%ignore nupic::experimental::extended_temporal_memory::ExtendedTemporalMemory::getPredictedActiveCells;
 %ignore nupic::experimental::extended_temporal_memory::ExtendedTemporalMemory::getPredictiveCells;
 %ignore nupic::experimental::extended_temporal_memory::ExtendedTemporalMemory::getWinnerCells;
 %ignore nupic::experimental::extended_temporal_memory::ExtendedTemporalMemory::cellsForColumn;

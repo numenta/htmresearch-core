@@ -221,6 +221,7 @@ void ExtendedTemporalMemory::initialize(
 
   activeCells_.clear();
   winnerCells_.clear();
+  predictedActiveCells_.clear();
   activeBasalSegments_.clear();
   matchingBasalSegments_.clear();
   activeApicalSegments_.clear();
@@ -529,6 +530,7 @@ static void learnOnCell(
 static void activatePredictedColumn(
   vector<CellIdx>& activeCells,
   vector<CellIdx>& winnerCells,
+  vector<CellIdx>& predictedActiveCells,
   Connections& basalConnections,
   Connections& apicalConnections,
   Random& rng,
@@ -589,6 +591,7 @@ static void activatePredictedColumn(
     {
       activeCells.push_back(cell);
       winnerCells.push_back(cell);
+      predictedActiveCells.push_back(cell);
 
       if (learn)
       {
@@ -869,6 +872,7 @@ void ExtendedTemporalMemory::activateCells(
 
   const vector<CellIdx> reinforceCandidatesInternal = std::move(activeCells_);
   const vector<CellIdx> growthCandidatesInternal = std::move(winnerCells_);
+  predictedActiveCells_.clear();
 
   const auto columnForBasalSegment = [&](Segment segment)
     { return basalConnections.cellForSegment(segment) / cellsPerColumn_; };
@@ -933,7 +937,7 @@ void ExtendedTemporalMemory::activateCells(
       if (maxPredictiveScore >= MIN_PREDICTIVE_THRESHOLD)
       {
         activatePredictedColumn(
-          activeCells_, winnerCells_,
+          activeCells_, winnerCells_, predictedActiveCells_,
           basalConnections, apicalConnections, rng_,
           columnActiveBasalBegin, columnActiveBasalEnd,
           columnMatchingBasalBegin, columnMatchingBasalEnd,
@@ -1170,6 +1174,7 @@ void ExtendedTemporalMemory::reset(void)
 {
   activeCells_.clear();
   winnerCells_.clear();
+  predictedActiveCells_.clear();
   activeBasalSegments_.clear();
   matchingBasalSegments_.clear();
   activeApicalSegments_.clear();
@@ -1283,6 +1288,11 @@ vector<CellIdx> ExtendedTemporalMemory::getPredictiveCells() const
   }
 
   return predictiveCells;
+}
+
+vector<CellIdx> ExtendedTemporalMemory::getPredictedActiveCells() const
+{
+  return predictedActiveCells_;
 }
 
 vector<CellIdx> ExtendedTemporalMemory::getWinnerCells() const
@@ -1641,6 +1651,13 @@ void ExtendedTemporalMemory::write(ExtendedTemporalMemoryProto::Builder& proto) 
     activeCells.set(i++, cell);
   }
 
+  auto predictedActiveCells = proto.initPredictedActiveCells(predictedActiveCells_.size());
+  i = 0;
+  for (CellIdx cell : predictedActiveCells_)
+  {
+    predictedActiveCells.set(i++, cell);
+  }
+
   auto winnerCells = proto.initWinnerCells(winnerCells_.size());
   i = 0;
   for (CellIdx cell : winnerCells_)
@@ -1778,6 +1795,12 @@ void ExtendedTemporalMemory::read(ExtendedTemporalMemoryProto::Reader& proto)
   for (auto cell : proto.getActiveCells())
   {
     activeCells_.push_back(cell);
+  }
+
+  predictedActiveCells_.clear();
+  for (auto cell : proto.getPredictedActiveCells())
+  {
+    predictedActiveCells_.push_back(cell);
   }
 
   winnerCells_.clear();

@@ -63,7 +63,7 @@ def findRequirements():
 if __name__ == "__main__":
 
   # Copy the proto files into the proto Python package.
-  destDir = os.path.relpath(os.path.join("htmresearch_core", "proto"))
+  destDir = os.path.relpath(os.path.join("src", "htmresearch_core", "proto"))
 
   # Copy the proto files into the proto Python package.
   protoSchemasToCopy = [
@@ -78,7 +78,8 @@ if __name__ == "__main__":
     # setuptools replaces "_" with "-", so package name is "htmresearch-core",
     # import namespace "htmresearch_core".
     name="htmresearch-core",
-    packages=find_packages(),
+    package_dir = {"": "src"},
+    packages=find_packages("src"),
     package_data={
       "htmresearch_core.proto": ["*.capnp"],
       "htmresearch_core": ["*.so", "*.pyd"],

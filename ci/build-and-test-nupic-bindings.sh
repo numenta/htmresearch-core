@@ -106,7 +106,7 @@ cmake ${NUPIC_CORE_ROOT} \
     -DCMAKE_BUILD_TYPE=${BUILD_TYPE} \
     ${EXTRA_CMAKE_DEFINITIONS} \
     -DCMAKE_INSTALL_PREFIX=${NUPIC_CORE_ROOT}/build/release \
-    -DPY_EXTENSIONS_DIR=${NUPIC_CORE_ROOT}/bindings/py/htmresearch_core
+    -DPY_EXTENSIONS_DIR=${NUPIC_CORE_ROOT}/bindings/py/src/htmresearch_core
 
 # Build nupic.core
 make install
