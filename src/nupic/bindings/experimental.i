@@ -490,23 +490,6 @@ using namespace nupic;
                           activeCellsExternalApical,
                           learn);
   }
-
-  void loadFromString(const std::string& inString)
-  {
-    std::istringstream inStream(inString);
-    self->load(inStream);
-  }
-
-  PyObject* getCState()
-  {
-    SharedPythonOStream py_s(self->persistentSize());
-    std::ostream& s = py_s.getStream();
-    // TODO: Consider writing floats as binary instead.
-    s.flags(ios::scientific);
-    s.precision(numeric_limits<double>::digits10 + 1);
-    self->save(s);
-    return py_s.close();
-  }
 }
 
 %ignore nupic::experimental::extended_temporal_memory::ExtendedTemporalMemory::getActiveCells;
