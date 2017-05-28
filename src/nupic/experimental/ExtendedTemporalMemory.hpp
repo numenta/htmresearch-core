@@ -398,6 +398,34 @@ namespace nupic {
         // ==============================
 
         /**
+         * Create a segment on the specified cell. This method calls
+         * createSegment on the underlying connections, and it does some extra
+         * bookkeeping. Unit tests should call this method, and not
+         * connections.createSegment().
+         *
+         * @param cell
+         * Cell to add a segment to.
+         *
+         * @return Segment
+         * The created segment.
+         */
+        Segment createBasalSegment(CellIdx cell);
+
+        /**
+         * Create a segment on the specified cell. This method calls
+         * createSegment on the underlying connections, and it does some extra
+         * bookkeeping. Unit tests should call this method, and not
+         * connections.createSegment().
+         *
+         * @param cell
+         * Cell to add a segment to.
+         *
+         * @return Segment
+         * The created segment.
+         */
+        Segment createApicalSegment(CellIdx cell);
+
+        /**
          * Returns the indices of cells that belong to a column.
          *
          * @param column Column index
@@ -563,6 +591,20 @@ namespace nupic {
         void setPredictedSegmentDecrement(Permanence);
 
         /**
+         * Returns the maxSegmentsPerCell.
+         *
+         * @returns Max segments per cell
+         */
+        UInt getMaxSegmentsPerCell() const;
+
+        /**
+         * Returns the maxSynapsesPerSegment.
+         *
+         * @returns Max synapses per segment
+         */
+        UInt getMaxSynapsesPerSegment() const;
+
+        /**
          * Returns the checkInputs parameter.
          *
          * @returns the checkInputs parameter
@@ -577,37 +619,12 @@ namespace nupic {
          */
         bool _validateCell(CellIdx cell);
 
-        /**
-         * Save (serialize) the current state of the spatial pooler to the
-         * specified file.
-         *
-         * @param fd A valid file descriptor.
-         */
-        virtual void save(ostream& outStream) const;
-
         using Serializable::write;
         virtual void write(
           ExtendedTemporalMemoryProto::Builder& proto) const override;
 
-        /**
-         * Load (deserialize) and initialize the spatial pooler from the
-         * specified input stream.
-         *
-         * @param inStream A valid istream.
-         */
-        virtual void load(istream& inStream);
-
         using Serializable::read;
         virtual void read(ExtendedTemporalMemoryProto::Reader& proto) override;
-
-        /**
-         * Returns the number of bytes that a save operation would result in.
-         * Note: this method is currently somewhat inefficient as it just does
-         * a full save into an ostream and counts the resulting size.
-         *
-         * @returns Integer number of bytes
-         */
-        virtual UInt persistentSize() const;
 
         //----------------------------------------------------------------------
         // Debugging helpers
@@ -672,6 +689,12 @@ namespace nupic {
 
         bool learnOnOneCell_;
         map<UInt, CellIdx> chosenCellForColumn_;
+
+        UInt maxSegmentsPerCell_;
+        UInt maxSynapsesPerSegment_;
+        UInt64 iteration_;
+        vector<UInt64> lastUsedIterationForBasalSegment_;
+        vector<UInt64> lastUsedIterationForApicalSegment_;
 
         Random rng_;
 
