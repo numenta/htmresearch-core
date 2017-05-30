@@ -4,7 +4,7 @@
 using import "/nupic/proto/ConnectionsProto.capnp".ConnectionsProto;
 using import "/nupic/proto/RandomProto.capnp".RandomProto;
 
-# Next ID: 24
+# Next ID: 32
 struct ExtendedTemporalMemoryProto {
 
   struct SegmentPath {
@@ -24,13 +24,13 @@ struct ExtendedTemporalMemoryProto {
     number @2 :UInt64;
   }
 
-  columnDimensions @0 :List(UInt32);
+  columnCount @0 :UInt32;
   cellsPerColumn @1 :UInt32;
   activationThreshold @2 :UInt32;
   initialPermanence @3 :Float32;
   connectedPermanence @4 :Float32;
   minThreshold @5 :UInt32;
-  maxNewSynapseCount @6 :UInt32;
+  sampleSize @6 :UInt32;
   permanenceIncrement @7 :Float32;
   permanenceDecrement @8 :Float32;
   predictedSegmentDecrement @9 :Float32;
@@ -61,6 +61,11 @@ struct ExtendedTemporalMemoryProto {
 
   learnOnOneCell @28 :Bool;
   chosenCellForColumn @29 :List(ChosenCellPair);
+
+  predictedCells @30 :List(UInt32);
+
+  basalInputSize @31 :UInt32;
+  apicalInputSize @32 :UInt32;
 
   # Next ID: 2
   struct ChosenCellPair {
