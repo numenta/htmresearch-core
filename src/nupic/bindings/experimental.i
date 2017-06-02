@@ -138,7 +138,69 @@ using namespace nupic;
                  maxSegmentsPerCell=255,
                  maxSynapsesPerSegment=255,
                  seed=42,
-                 checkInputs=True):
+                 checkInputs=True,
+                 basalInputPrepend=False):
+      """
+      @param columnCount (int)
+      The number of minicolumns
+
+      @param basalInputSize (sequence)
+      The number of bits in the basal input
+
+      @param apicalInputSize (int)
+      The number of bits in the apical input
+
+      @param cellsPerColumn (int)
+      Number of cells per column
+
+      @param activationThreshold (int)
+      If the number of active connected synapses on a segment is at least this
+      threshold, the segment is said to be active.
+
+      @param initialPermanence (float)
+      Initial permanence of a new synapse
+
+      @param connectedPermanence (float)
+      If the permanence value for a synapse is greater than this value, it is said
+      to be connected.
+
+      @param minThreshold (int)
+      If the number of potential synapses active on a segment is at least this
+      threshold, it is said to be "matching" and is eligible for learning.
+
+      @param sampleSize (int)
+      How much of the active SDR to sample with synapses.
+
+      @param permanenceIncrement (float)
+      Amount by which permanences of synapses are incremented during learning.
+
+      @param permanenceDecrement (float)
+      Amount by which permanences of synapses are decremented during learning.
+
+      @param predictedSegmentDecrement (float)
+      Amount by which basal segments are punished for incorrect predictions.
+
+      @param learnOnOneCell (bool)
+      Whether to always choose the same cell when bursting a column until the
+      next reset occurs.
+
+      @param maxSegmentsPerCell (int)
+      The maximum number of segments per cell.
+
+      @param maxSynapsesPerSegment (int)
+      The maximum number of synapses per segment.
+
+      @param seed (int)
+      Seed for the random number generator.
+
+      @param basalInputPrepend (bool)
+      If true, this TM will automatically insert its activeCells and winnerCells
+      into the basalInput and basalGrowthCandidates, respectively.
+      """
+
+      if basalInputPrepend:
+        basalInputSize += columnCount * cellsPerColumn
+
       self.this = _EXPERIMENTAL.new_ExtendedTemporalMemory(
         columnCount, basalInputSize, apicalInputSize,
         cellsPerColumn, activationThreshold,
@@ -147,6 +209,8 @@ using namespace nupic;
         permanenceDecrement, predictedSegmentDecrement,
         learnOnOneCell, seed, maxSegmentsPerCell,
         maxSynapsesPerSegment, checkInputs)
+
+      self.basalInputPrepend = basalInputPrepend
 
 
     def __getstate__(self):
@@ -210,6 +274,12 @@ using namespace nupic;
       npApicalGrowth = (numpy.asarray(apicalGrowthCandidates, "uint32")
                         if apicalGrowthCandidates is not None
                         else npApical)
+
+      if self.basalInputPrepend:
+        npBasal = numpy.append(self.getActiveCells(),
+                               npBasal + self.numberOfCells())
+        npBasalGrowth = numpy.append(self.getWinnerCells(),
+                                     npBasalGrowth + self.numberOfCells())
 
       self.convertedCompute(
         numpy.asarray(activeColumns, "uint32"),
