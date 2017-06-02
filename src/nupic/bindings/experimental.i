@@ -1,6 +1,6 @@
 /* ---------------------------------------------------------------------
  * Numenta Platform for Intelligent Computing (NuPIC)
- * Copyright (C) 2013-2016, Numenta, Inc.  Unless you have an agreement
+ * Copyright (C) 2016-2017, Numenta, Inc.  Unless you have an agreement
  * with Numenta, Inc., for a separate license for this software code, the
  * following terms and conditions apply:
  *
@@ -74,8 +74,6 @@ _EXPERIMENTAL = _experimental
 
 #include <nupic/proto/ExtendedTemporalMemoryProto.capnp.h>
 
-#define NPY_NO_DEPRECATED_API NPY_1_7_API_VERSION
-#include <numpy/arrayobject.h>
 #include <nupic/py_support/NumpyVector.hpp>
 #if !CAPNP_LITE
 #include <nupic/py_support/PyCapnp.hpp>
@@ -93,6 +91,16 @@ _EXPERIMENTAL = _experimental
 using namespace nupic::experimental::extended_temporal_memory;
 using namespace nupic;
 
+%}
+
+//
+// Numpy API
+//
+%{
+#include <nupic/py_support/NumpyArrayObject.hpp>
+%}
+%init %{
+  nupic::initializeNumpy();
 %}
 
 %naturalvar;
