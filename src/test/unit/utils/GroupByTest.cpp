@@ -497,4 +497,137 @@ namespace {
 
     EXPECT_EQ(expectedValues.size(), i);
   }
+
+  struct ReturnValue6 {
+    int key;
+    vector<int> results0;
+    vector<int> results1;
+    vector<int> results2;
+    vector<int> results3;
+    vector<int> results4;
+    vector<int> results5;
+  };
+
+  TEST(GroupByTest, SixSequences)
+  {
+    const vector<int> sequence0 = {7, 12, 16};
+    const vector<int> sequence1 = {3, 4, 5};
+    const vector<int> sequence2 = {3, 3, 4, 5};
+    const vector<int> sequence3 = {3, 3, 4, 5};
+    const vector<int> sequence4 = {2, 2, 3};
+    const vector<int> sequence5 = {1, 3, 5};
+
+    auto identity = [](int a) { return a; };
+    auto times3 = [](int a) { return a*3; };
+    auto times4 = [](int a) { return a*4; };
+    auto times5 = [](int a) { return a*5; };
+    auto times6 = [](int a) { return a*6; };
+    auto times7 = [](int a) { return a*7; };
+
+    const vector<ReturnValue6> expectedValues = {
+      {7, {7}, {}, {}, {}, {}, {1}},
+      {9, {}, {3}, {}, {}, {}, {}},
+      {12, {12}, {4}, {3, 3}, {}, {2, 2}, {}},
+      {15, {}, {5}, {}, {3, 3}, {}, {}},
+      {16, {16}, {}, {4}, {}, {}, {}},
+      {18, {}, {}, {}, {}, {3}, {}},
+      {20, {}, {}, {5}, {4}, {}, {}},
+      {21, {}, {}, {}, {}, {}, {3}},
+      {25, {}, {}, {}, {5}, {}},
+      {35, {}, {}, {}, {}, {}, {5}}
+    };
+
+    //
+    // groupBy
+    //
+    size_t i = 0;
+    for (auto data : groupBy(sequence0, identity,
+                             sequence1, times3,
+                             sequence2, times4,
+                             sequence3, times5,
+                             sequence4, times6,
+                             sequence5, times7))
+    {
+      int key;
+      vector<int>::const_iterator
+        begin0, end0,
+        begin1, end1,
+        begin2, end2,
+        begin3, end3,
+        begin4, end4,
+        begin5, end5;
+
+      tie(key,
+          begin0, end0,
+          begin1, end1,
+          begin2, end2,
+          begin3, end3,
+          begin4, end4,
+          begin5, end5) = data;
+
+      const ReturnValue6 actualValue =
+        {key,
+         {begin0, end0}, {begin1, end1},
+         {begin2, end2}, {begin3, end3},
+         {begin4, end4}, {begin5, end5}};
+
+      EXPECT_EQ(expectedValues[i].key, actualValue.key);
+      EXPECT_EQ(expectedValues[i].results0, actualValue.results0);
+      EXPECT_EQ(expectedValues[i].results1, actualValue.results1);
+      EXPECT_EQ(expectedValues[i].results2, actualValue.results2);
+      EXPECT_EQ(expectedValues[i].results3, actualValue.results3);
+      EXPECT_EQ(expectedValues[i].results4, actualValue.results4);
+      EXPECT_EQ(expectedValues[i].results5, actualValue.results5);
+
+      i++;
+    }
+
+    //
+    // iterGroupBy
+    //
+    i = 0;
+    for (auto data : iterGroupBy(
+           sequence0.begin(), sequence0.end(), identity,
+           sequence1.begin(), sequence1.end(), times3,
+           sequence2.begin(), sequence2.end(), times4,
+           sequence3.begin(), sequence3.end(), times5,
+           sequence4.begin(), sequence4.end(), times6,
+           sequence5.begin(), sequence5.end(), times7))
+    {
+      int key;
+      vector<int>::const_iterator
+        begin0, end0,
+        begin1, end1,
+        begin2, end2,
+        begin3, end3,
+        begin4, end4,
+        begin5, end5;
+
+      tie(key,
+          begin0, end0,
+          begin1, end1,
+          begin2, end2,
+          begin3, end3,
+          begin4, end4,
+          begin5, end5) = data;
+
+      const ReturnValue6 actualValue =
+        {key,
+         {begin0, end0}, {begin1, end1},
+         {begin2, end2}, {begin3, end3},
+         {begin4, end4}, {begin5, end5}};
+
+      EXPECT_EQ(expectedValues[i].key, actualValue.key);
+      EXPECT_EQ(expectedValues[i].results0, actualValue.results0);
+      EXPECT_EQ(expectedValues[i].results1, actualValue.results1);
+      EXPECT_EQ(expectedValues[i].results2, actualValue.results2);
+      EXPECT_EQ(expectedValues[i].results3, actualValue.results3);
+      EXPECT_EQ(expectedValues[i].results4, actualValue.results4);
+      EXPECT_EQ(expectedValues[i].results5, actualValue.results5);
+
+      i++;
+    }
+
+    EXPECT_EQ(expectedValues.size(), i);
+  }
 }

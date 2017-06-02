@@ -32,44 +32,17 @@
 #include <nupic/types/Types.hpp>
 #include <nupic/utils/Random.hpp>
 #include <nupic/algorithms/Connections.hpp>
-
-using namespace std;
-using namespace nupic;
-using namespace nupic::algorithms::connections;
-
 #include <nupic/proto/ExtendedTemporalMemoryProto.capnp.h>
 
 namespace nupic {
   namespace experimental {
     namespace extended_temporal_memory {
 
+      using namespace algorithms::connections;
+
       /**
-       * Extended Temporal Memory implementation in C++.
-       *
-       *
-       * Public interface 1: compute
-       *
-       * Just call compute repeatedly.
-       *
-       *   tm.compute(...);
-       *   tm.compute(...);
-       *
-       * The getPredictiveCells() method gets predictions for the next compute.
-       *
-       *
-       * Public interface 2: depolarizeCells + activateColumns
-       *
-       * Call depolarizeCells() to change the predictive cells.
-       * Call activateCells() to change the active cells.
-       *
-       *   tm.depolarizeCells(...);
-       *   tm.activateCells(...);
-       *   tm.depolarizeCells(...);
-       *   tm.activateCells(...);
-       *
-       * The getPredictiveCells() method gets predictions from the most recent
-       * depolarizeCells().
-       *
+       * A fast Temporal Memory implementation with apical dendrites and
+       * customizable basal input.
        *
        * The public API uses C arrays, not std::vectors, as inputs. C arrays are
        * a good lowest common denominator. You can get a C array from a vector,
@@ -86,14 +59,14 @@ namespace nupic {
         /**
          * Initialize the temporal memory (TM) using the given parameters.
          *
-         * @param columnDimensions
-         * Dimensions of the column space
+         * @param columnCount
+         * The number of minicolumns
          *
-         * @param basalInputDimensions
-         * Dimensions of the external basal input.
+         * @param basalInputSize
+         * The number of bits in the basal input
          *
-         * @param apicalInputDimensions
-         * Dimensions of the external apical input.
+         * @param apicalInputSize
+         * The number of bits in the apical input
          *
          * @param cellsPerColumn
          * Number of cells per column
@@ -114,8 +87,8 @@ namespace nupic {
          * threshold, it is selected as the best matching cell in a bursting
          * column.
          *
-         * @param maxNewSynapseCount
-         * The maximum number of synapses added to a segment during learning.
+         * @param sampleSize
+         * How much of the active SDR to sample with synapses.
          *
          * @param permanenceIncrement
          * Amount by which permanences of synapses are incremented during
@@ -146,19 +119,18 @@ namespace nupic {
          * something like 4% * 0.01 = 0.0004).
          */
         ExtendedTemporalMemory(
-          vector<UInt> columnDimensions,
-          vector<UInt> basalInputDimensions,
-          vector<UInt> apicalInputDimensions,
+          UInt columnCount,
+          UInt basalInputSize,
+          UInt apicalInputSize,
           UInt cellsPerColumn = 32,
           UInt activationThreshold = 13,
           Permanence initialPermanence = 0.21,
           Permanence connectedPermanence = 0.50,
           UInt minThreshold = 10,
-          UInt maxNewSynapseCount = 20,
+          UInt sampleSize = 20,
           Permanence permanenceIncrement = 0.10,
           Permanence permanenceDecrement = 0.10,
           Permanence predictedSegmentDecrement = 0.0,
-          bool formInternalBasalConnections = true,
           bool learnOnOneCell = false,
           Int seed = 42,
           UInt maxSegmentsPerCell=255,
@@ -166,19 +138,18 @@ namespace nupic {
           bool checkInputs = true);
 
         virtual void initialize(
-          vector<UInt> columnDimensions,
-          vector<UInt> basalInputDimensions,
-          vector<UInt> apicalInputDimensions,
+          UInt columnCount,
+          UInt basalInputSize,
+          UInt apicalInputSize,
           UInt cellsPerColumn = 32,
           UInt activationThreshold = 13,
           Permanence initialPermanence = 0.21,
           Permanence connectedPermanence = 0.50,
           UInt minThreshold = 10,
-          UInt maxNewSynapseCount = 20,
+          UInt sampleSize = 20,
           Permanence permanenceIncrement = 0.10,
           Permanence permanenceDecrement = 0.10,
           Permanence predictedSegmentDecrement = 0.0,
-          bool formInternalBasalConnections = true,
           bool learnOnOneCell = false,
           Int seed = 42,
           UInt maxSegmentsPerCell=255,
@@ -212,185 +183,129 @@ namespace nupic {
         virtual void reset();
 
         /**
-         * Calculate the active cells, using the current active columns and
-         * dendrite segments. Grow and reinforce synapses.
-         *
-         * @param activeColumnsSize
-         * Size of activeColumns.
-         *
-         * @param activeColumns
-         * A sorted list of active column indices.
-         *
-         * @param reinforceCandidatesExternalBasalSize
-         * Size of reinforceCandidatesExternalBasal.
-         *
-         * @param reinforceCandidatesExternalBasal
-         * Sorted list of external cells. Any learning basal dendrite segments
-         * will use this list to decide which synapses to reinforce and which
-         * synapses to punish. Typically this list should be the
-         * 'activeCellsExternalBasal' from the prevous time step.
-         *
-         * @param reinforceCandidatesExternalApical
-         * Size of reinforceCandidatesExternalApical.
-         *
-         * @param reinforceCandidatesExternalApical
-         * Sorted list of external cells. Any learning apical dendrite segments will use
-         * this list to decide which synapses to reinforce and which synapses to
-         * punish. Typically this list should be the 'activeCellsExternalApical' from
-         * the prevous time step.
-         *
-         * @param growthCandidatesExternalBasal
-         * Size of growthCandidatesExternalBasal.
-         *
-         * @param growthCandidatesExternalBasal
-         * Sorted list of external cells. Any learning basal dendrite segments can grow
-         * synapses to cells in this list. Typically this list should be a subset of
-         * the 'activeCellsExternalBasal' from the previous 'activateDendrites'.
-         *
-         * @param growthCandidatesExternalApical
-         * Size of growthCandidatesExternalApical.
-         *
-         * @param growthCandidatesExternalApical
-         * Sorted list of external cells. Any learning apical dendrite segments can grow
-         * synapses to cells in this list. Typically this list should be a subset of
-         * the 'activeCellsExternalApical' from the previous 'activateDendrites'.
-         *
-         * @param learn
-         * If true, reinforce / punish / grow synapses.
-         */
-        void activateCells(
-          size_t activeColumnsSize,
-          const UInt activeColumns[],
-
-          size_t reinforceCandidatesExternalBasalSize,
-          const CellIdx reinforceCandidatesExternalBasal[],
-
-          size_t reinforceCandidatesExternalApicalSize,
-          const CellIdx reinforceCandidatesExternalApical[],
-
-          size_t growthCandidatesExternalBasalSize,
-          const CellIdx growthCandidatesExternalBasal[],
-
-          size_t growthCandidatesExternalApicalSize,
-          const CellIdx growthCandidatesExternalApical[],
-
-          bool learn);
-
-        /**
-         * Calculate dendrite segment activity, using the current active cells.
-         *
-         * This changes the result of getPredictiveCells().
-         *
-         * @param activeCellsExternalBasalSize
-         * Size of activeCellsExternalBasal.
-         *
-         * @param activeCellsExternalBasal
-         * Sorted list of active external cells for activating basal dendrites.
-         *
-         * @param activeCellsExternalApicalSize
-         * Size of activeCellsExternalApical.
-         *
-         * @param activeCellsExternalApical
-         * Sorted list of active external cells for activating apical dendrites.
-         *
-         * @param learn
-         * If true, segment activations will be recorded. This information is
-         * used during segment cleanup.
-         */
-        void depolarizeCells(
-          size_t activeCellsExternalBasalSize,
-          const CellIdx activeCellsExternalBasal[],
-
-          size_t activeCellsExternalApicalSize,
-          const CellIdx activeCellsExternalApical[],
-
-          bool learn = true);
-
-        /**
-         * Perform one time step of the Temporal Memory algorithm.
-         *
-         * This method calls activateCells, then calls activateDendrites. Using
-         * the TemporalMemory via its compute method ensures that you'll always
-         * be able to call getPredictiveCells to get predictions for the next
-         * time step.
-         *
-         * @param activeColumnsSize
-         * Size of activeColumns.
+         * Perform one time step of the Temporal Memory algorithm. Use the
+         * inputs to calculate a set of predicted cells, then calculate the set
+         * of active cells.
          *
          * @param activeColumns
          * Sorted list of indices of active columns.
          *
-         * @param activeCellsExternalBasalSize
-         * Size of activeCellsExternalBasal.
+         * @param basalInput
+         * Sorted list of active input bits for the basal dendrite segments.
          *
-         * @param activeCellsExternalBasal
-         * Sorted list of active external cells for activating basal dendrites.
+         * @param apicalInput
+         * Sorted list of active input bits for the apical dendrite segments.
          *
-         * @param activeCellsExternalApicalSize
-         * Size of activeCellsExternalApical.
+         * @param basalGrowthCandidates
+         * List of bits that the active cells may grow new basal synapses to.
+         * In traditional TemporalMemory, this would be the prevWinnerCells.
          *
-         * @param activeCellsExternalApical
-         * Sorted list of active external cells for activating apical dendrites.
-         *
-         * @param reinforceCandidatesExternalBasalSize
-         * Size of reinforceCandidatesExternalBasal.
-         *
-         * @param reinforceCandidatesExternalBasal
-         * Sorted list of external cells. Any learning basal dendrite segments
-         * will use this list to decide which synapses to reinforce and which
-         * synapses to punish. Typically this list should be the
-         * 'activeCellsExternalBasal' from the prevous time step.
-         *
-         * @param reinforceCandidatesExternalApical
-         * Size of reinforceCandidatesExternalApical.
-         *
-         * @param reinforceCandidatesExternalApical
-         * Sorted list of external cells. Any learning apical dendrite segments will use
-         * this list to decide which synapses to reinforce and which synapses to
-         * punish. Typically this list should be the 'activeCellsExternalApical' from
-         * the prevous time step.
-         *
-         * @param growthCandidatesExternalBasal
-         * Size of growthCandidatesExternalBasal.
-         *
-         * @param growthCandidatesExternalBasal
-         * Sorted list of external cells. Any learning basal dendrite segments can grow
-         * synapses to cells in this list. Typically this list should be a subset of
-         * the 'activeCellsExternalBasal' from the previous 'activateDendrites'.
-         *
-         * @param growthCandidatesExternalApical
-         * Size of growthCandidatesExternalApical.
-         *
-         * @param growthCandidatesExternalApical
-         * Sorted list of external cells. Any learning apical dendrite segments can grow
-         * synapses to cells in this list. Typically this list should be a subset of
-         * the 'activeCellsExternalApical' from the previous 'activateDendrites'.
+         * @param apicalGrowthCandidates
+         * List of bits that the active cells may grow new apical synapses to.
          *
          * @param learn
          * Whether or not learning is enabled.
          */
-        virtual void compute(
-          size_t activeColumnsSize,
-          const UInt activeColumns[],
+        void compute(
+          const UInt* activeColumnsBegin,
+          const UInt* activeColumnsEnd,
+          const CellIdx* basalInputBegin,
+          const CellIdx* basalInputEnd,
+          const CellIdx* apicalInputBegin,
+          const CellIdx* apicalInputEnd,
+          const CellIdx* basalGrowthCandidatesBegin,
+          const CellIdx* basalGrowthCandidatesEnd,
+          const CellIdx* apicalGrowthCandidatesBegin,
+          const CellIdx* apicalGrowthCandidatesEnd,
+          bool learn = true);
 
-          size_t activeCellsExternalBasalSize = 0,
-          const CellIdx activeCellsExternalBasal[] = nullptr,
+        /**
+         * Perform one time step of the Temporal Memory algorithm. Use the
+         * inputs to calculate a set of predicted cells, then calculate the set
+         * of active cells.
+         *
+         * @param activeColumns
+         * Sorted list of indices of active columns.
+         *
+         * @param basalInput
+         * Sorted list of active input bits for the basal dendrite segments.
+         *
+         * @param apicalInput
+         * Sorted list of active input bits for the apical dendrite segments.
+         *
+         * @param basalGrowthCandidates
+         * List of bits that the active cells may grow new basal synapses to.
+         * In traditional TemporalMemory, this would be the prevWinnerCells.
+         *
+         * @param apicalGrowthCandidates
+         * List of bits that the active cells may grow new apical synapses to.
+         *
+         * @param learn
+         * Whether or not learning is enabled.
+         */
+        void compute(
+          const std::vector<UInt>& activeColumns,
+          const std::vector<CellIdx>& basalInput,
+          const std::vector<CellIdx>& apicalInput,
+          const std::vector<CellIdx>& basalGrowthCandidates,
+          const std::vector<CellIdx>& apicalGrowthCandidates,
+          bool learn = true);
 
-          size_t activeCellsExternalApicalSize = 0,
-          const CellIdx activeCellsExternalApical[] = nullptr,
+        /**
+         * Equivalent to:
+         *
+         *  etm.compute(activeColumns,
+         *              etm.getActiveCells(),
+         *              apicalInput,
+         *              etm.getWinnerCells(),
+         *              apicalGrowthCandidates);
+         *
+         * @param activeColumns
+         * Sorted list of indices of active columns.
+         *
+         * @param apicalInput
+         * Sorted list of active input bits for the apical dendrite segments.
+         *
+         * @param apicalGrowthCandidates
+         * List of bits that the active cells may grow new apical synapses to.
+         *
+         * @param learn
+         * Whether or not learning is enabled.
+         */
+        void sequenceMemoryCompute(
+          const UInt* activeColumnsBegin,
+          const UInt* activeColumnsEnd,
+          const CellIdx* apicalInputBegin = nullptr,
+          const CellIdx* apicalInputEnd = nullptr,
+          const CellIdx* apicalGrowthCandidatesBegin = nullptr,
+          const CellIdx* apicalGrowthCandidatesEnd = nullptr,
+          bool learn = true);
 
-          size_t reinforceCandidatesExternalBasalSize = 0,
-          const CellIdx reinforceCandidatesExternalBasal[] = nullptr,
-
-          size_t reinforceCandidatesExternalApicalSize = 0,
-          const CellIdx reinforceCandidatesExternalApical[] = nullptr,
-
-          size_t growthCandidatesExternalBasalSize = 0,
-          const CellIdx growthCandidatesExternalBasal[] = nullptr,
-
-          size_t growthCandidatesExternalApicalSize = 0,
-          const CellIdx growthCandidatesExternalApical[] = nullptr,
-
+        /**
+         * Equivalent to:
+         *
+         *  etm.compute(activeColumns,
+         *              etm.getActiveCells(),
+         *              apicalInput,
+         *              etm.getWinnerCells(),
+         *              apicalGrowthCandidates);
+         *
+         * @param activeColumns
+         * Sorted list of indices of active columns.
+         *
+         * @param apicalInput
+         * Sorted list of active input bits for the apical dendrite segments.
+         *
+         * @param apicalGrowthCandidates
+         * List of bits that the active cells may grow new apical synapses to.
+         *
+         * @param learn
+         * Whether or not learning is enabled.
+         */
+        void sequenceMemoryCompute(
+          const std::vector<UInt>& activeColumns,
+          const std::vector<CellIdx>& apicalInput = {},
+          const std::vector<CellIdx>& apicalGrowthCandidates = {},
           bool learn = true);
 
         // ==============================
@@ -430,75 +345,62 @@ namespace nupic {
          *
          * @param column Column index
          *
-         * @return (vector<CellIdx>) Cell indices
+         * @return Cell indices
          */
-        vector<CellIdx> cellsForColumn(UInt column);
+        std::vector<CellIdx> cellsForColumn(UInt column);
 
         /**
          * Returns the number of cells in this layer.
          *
-         * @return (int) Number of cells
+         * @return Number of cells
          */
         UInt numberOfCells(void);
 
         /**
         * Returns the indices of the active cells.
         *
-        * @returns (std::vector<CellIdx>) Vector of indices of active cells.
+        * @returns Vector of indices of active cells.
         */
-        vector<CellIdx> getActiveCells() const;
+        std::vector<CellIdx> getActiveCells() const;
 
         /**
-        * Returns the indices of the predictive cells.
+        * Returns the indices of the cells that were predicted.
         *
-        * @returns (std::vector<CellIdx>) Vector of indices of predictive cells.
+        * @returns Indices of predicted cells.
         */
-        vector<CellIdx> getPredictiveCells() const;
+        std::vector<CellIdx> getPredictedCells() const;
 
         /**
          * Returns the indices of the active cells that were predicted.
          *
         * @returns Indices of predicted active cells.
          */
-        vector<CellIdx> getPredictedActiveCells() const;
+        std::vector<CellIdx> getPredictedActiveCells() const;
 
         /**
         * Returns the indices of the winner cells.
         *
         * @returns (std::vector<CellIdx>) Vector of indices of winner cells.
         */
-        vector<CellIdx> getWinnerCells() const;
+        std::vector<CellIdx> getWinnerCells() const;
 
-        vector<Segment> getActiveBasalSegments() const;
-        vector<Segment> getMatchingBasalSegments() const;
-        vector<Segment> getActiveApicalSegments() const;
-        vector<Segment> getMatchingApicalSegments() const;
+        std::vector<Segment> getActiveBasalSegments() const;
+        std::vector<Segment> getMatchingBasalSegments() const;
+        std::vector<Segment> getActiveApicalSegments() const;
+        std::vector<Segment> getMatchingApicalSegments() const;
 
         /**
-         * Returns the dimensions of the columns.
-         *
-         * @returns List of column dimension
+         * @returns Total number of cells in the basal input.
          */
-        vector<UInt> getColumnDimensions() const;
+        UInt getBasalInputSize() const;
 
         /**
-         * Returns the dimensions of the basal input.
-         *
-         * @returns List of basal input dimensions
+         * @returns Total number of cells in the apical input.
          */
-        vector<UInt> getBasalInputDimensions() const;
+        UInt getApicalInputSize() const;
 
         /**
-         * Returns the dimensions of the apical input.
-         *
-         * @returns List of apical input dimensions
-         */
-        vector<UInt> getApicalInputDimensions() const;
-
-        /**
-         * Returns the total number of columns.
-         *
-         * @returns Integer number of column numbers
+         * @returns Total number of minicolumns.
          */
         UInt numberOfColumns() const;
 
@@ -542,20 +444,10 @@ namespace nupic {
         void setMinThreshold(UInt);
 
         /**
-         * Returns the maximum new synapse count.
-         *
-         * @returns Integer number of maximum new synapse count
+         * @returns Synapse sample size
          */
-        UInt getMaxNewSynapseCount() const;
-        void setMaxNewSynapseCount(UInt);
-
-        /**
-         * Returns whether to form internal connections between cells.
-         *
-         * @returns the formInternalBasalConnections parameter
-         */
-        bool getFormInternalBasalConnections() const;
-        void setFormInternalBasalConnections(bool formInternalBasalConnections);
+        UInt getSampleSize() const;
+        void setSampleSize(UInt);
 
         /**
          * Returns whether to always choose the same cell when bursting a column
@@ -626,6 +518,9 @@ namespace nupic {
         using Serializable::read;
         virtual void read(ExtendedTemporalMemoryProto::Reader& proto) override;
 
+        bool operator==(const ExtendedTemporalMemory& other);
+        bool operator!=(const ExtendedTemporalMemory& other);
+
         //----------------------------------------------------------------------
         // Debugging helpers
         //----------------------------------------------------------------------
@@ -642,30 +537,105 @@ namespace nupic {
          *
          * @return (int) Column index
          */
-        Int columnForCell(CellIdx cell);
-
-        /**
-         * Print the given UInt array in a nice format
-         */
-        void printState(vector<UInt> &state);
-
-        /**
-         * Print the given Real array in a nice format
-         */
-        void printState(vector<Real> &state);
+        UInt columnForCell(CellIdx cell);
 
       protected:
-        UInt numColumns_;
-        UInt numBasalInputs_;
-        UInt numApicalInputs_;
-        vector<UInt> columnDimensions_;
-        vector<UInt> basalInputDimensions_;
-        vector<UInt> apicalInputDimensions_;
+
+        /**
+         * Calculate the active cells, using the current active columns and
+         * dendrite segments. Grow and reinforce synapses.
+         *
+         * @param activeColumnsSize
+         * Size of activeColumns.
+         *
+         * @param activeColumns
+         * A sorted list of active column indices.
+         *
+         * @param reinforceCandidatesExternalBasalSize
+         * Size of reinforceCandidatesExternalBasal.
+         *
+         * @param reinforceCandidatesExternalBasal
+         * Sorted list of external cells. Any learning basal dendrite segments
+         * will use this list to decide which synapses to reinforce and which
+         * synapses to punish. Typically this list should be the
+         * 'activeCellsExternalBasal' from the prevous time step.
+         *
+         * @param reinforceCandidatesExternalApical
+         * Size of reinforceCandidatesExternalApical.
+         *
+         * @param reinforceCandidatesExternalApical
+         * Sorted list of external cells. Any learning apical dendrite segments will use
+         * this list to decide which synapses to reinforce and which synapses to
+         * punish. Typically this list should be the 'activeCellsExternalApical' from
+         * the prevous time step.
+         *
+         * @param growthCandidatesExternalBasal
+         * Size of growthCandidatesExternalBasal.
+         *
+         * @param growthCandidatesExternalBasal
+         * Sorted list of external cells. Any learning basal dendrite segments can grow
+         * synapses to cells in this list. Typically this list should be a subset of
+         * the 'activeCellsExternalBasal' from the previous 'activateDendrites'.
+         *
+         * @param growthCandidatesExternalApical
+         * Size of growthCandidatesExternalApical.
+         *
+         * @param growthCandidatesExternalApical
+         * Sorted list of external cells. Any learning apical dendrite segments can grow
+         * synapses to cells in this list. Typically this list should be a subset of
+         * the 'activeCellsExternalApical' from the previous 'activateDendrites'.
+         *
+         * @param learn
+         * If true, reinforce / punish / grow synapses.
+         */
+        void activateCells_(
+          const UInt* activeColumnsBegin,
+          const UInt* activeColumnsEnd,
+          const CellIdx* basalInputBegin,
+          const CellIdx* basalInputEnd,
+          const CellIdx* apicalInputBegin,
+          const CellIdx* apicalInputEnd,
+          const CellIdx* basalGrowthCandidatesBegin,
+          const CellIdx* basalGrowthCandidatesEnd,
+          const CellIdx* apicalGrowthCandidatesBegin,
+          const CellIdx* apicalGrowthCandidatesEnd,
+          bool learn);
+
+        /**
+         * Calculate dendrite segment activity, using the current active cells.
+         *
+         * @param activeCellsExternalBasalSize
+         * Size of activeCellsExternalBasal.
+         *
+         * @param activeCellsExternalBasal
+         * Sorted list of active external cells for activating basal dendrites.
+         *
+         * @param activeCellsExternalApicalSize
+         * Size of activeCellsExternalApical.
+         *
+         * @param activeCellsExternalApical
+         * Sorted list of active external cells for activating apical dendrites.
+         *
+         * @param learn
+         * If true, segment activations will be recorded. This information is
+         * used during segment cleanup.
+         */
+        void depolarizeCells_(
+          const CellIdx* basalInputBegin,
+          const CellIdx* basalInputEnd,
+          const CellIdx* apicalInputBegin,
+          const CellIdx* apicalInputEnd,
+          bool learn = true);
+
+      protected:
+
+        UInt columnCount_;
+        UInt basalInputSize_;
+        UInt apicalInputSize_;
         UInt cellsPerColumn_;
         UInt activationThreshold_;
         UInt minThreshold_;
-        UInt maxNewSynapseCount_;
-        bool formInternalBasalConnections_;
+        UInt sampleSize_;
         bool checkInputs_;
         Permanence initialPermanence_;
         Permanence connectedPermanence_;
@@ -673,28 +643,29 @@ namespace nupic {
         Permanence permanenceDecrement_;
         Permanence predictedSegmentDecrement_;
 
-        vector<CellIdx> activeCells_;
-        vector<CellIdx> predictedActiveCells_;
-        vector<CellIdx> winnerCells_;
+        std::vector<CellIdx> activeCells_;
+        std::vector<CellIdx> predictedCells_;
+        std::vector<CellIdx> predictedActiveCells_;
+        std::vector<CellIdx> winnerCells_;
 
-        vector<Segment> activeBasalSegments_;
-        vector<Segment> matchingBasalSegments_;
-        vector<UInt32> numActiveConnectedSynapsesForBasalSegment_;
-        vector<UInt32> numActivePotentialSynapsesForBasalSegment_;
+        std::vector<Segment> activeBasalSegments_;
+        std::vector<Segment> matchingBasalSegments_;
+        std::vector<UInt32> basalOverlaps_;
+        std::vector<UInt32> basalPotentialOverlaps_;
 
-        vector<Segment> activeApicalSegments_;
-        vector<Segment> matchingApicalSegments_;
-        vector<UInt32> numActiveConnectedSynapsesForApicalSegment_;
-        vector<UInt32> numActivePotentialSynapsesForApicalSegment_;
+        std::vector<Segment> activeApicalSegments_;
+        std::vector<Segment> matchingApicalSegments_;
+        std::vector<UInt32> apicalOverlaps_;
+        std::vector<UInt32> apicalPotentialOverlaps_;
 
         bool learnOnOneCell_;
-        map<UInt, CellIdx> chosenCellForColumn_;
+        std::map<UInt, CellIdx> chosenCellForColumn_;
 
         UInt maxSegmentsPerCell_;
         UInt maxSynapsesPerSegment_;
         UInt64 iteration_;
-        vector<UInt64> lastUsedIterationForBasalSegment_;
-        vector<UInt64> lastUsedIterationForApicalSegment_;
+        std::vector<UInt64> lastUsedIterationForBasalSegment_;
+        std::vector<UInt64> lastUsedIterationForApicalSegment_;
 
         Random rng_;
 
