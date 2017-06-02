@@ -518,6 +518,9 @@ namespace nupic {
         using Serializable::read;
         virtual void read(ExtendedTemporalMemoryProto::Reader& proto) override;
 
+        bool operator==(const ExtendedTemporalMemory& other);
+        bool operator!=(const ExtendedTemporalMemory& other);
+
         //----------------------------------------------------------------------
         // Debugging helpers
         //----------------------------------------------------------------------

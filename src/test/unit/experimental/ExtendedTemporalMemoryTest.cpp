@@ -41,19 +41,6 @@ using namespace std;
 #define EPSILON 0.0000001
 
 namespace {
-  void check_tm_eq(const ExtendedTemporalMemory& tm1,
-                   const ExtendedTemporalMemory& tm2)
-  {
-    ASSERT_EQ(tm1.numberOfColumns(), tm2.numberOfColumns());
-    ASSERT_EQ(tm1.getCellsPerColumn(), tm2.getCellsPerColumn());
-    ASSERT_EQ(tm1.getActivationThreshold(), tm2.getActivationThreshold());
-    ASSERT_EQ(tm1.getMinThreshold(), tm2.getMinThreshold());
-    ASSERT_EQ(tm1.getSampleSize(), tm2.getSampleSize());
-    ASSERT_NEAR(tm1.getInitialPermanence(), tm2.getInitialPermanence(), EPSILON);
-    ASSERT_NEAR(tm1.getConnectedPermanence(), tm2.getConnectedPermanence(), EPSILON);
-    ASSERT_NEAR(tm1.getPermanenceIncrement(), tm2.getPermanenceIncrement(), EPSILON);
-    ASSERT_NEAR(tm1.getPermanenceDecrement(), tm2.getPermanenceDecrement(), EPSILON);
-  }
 
   TEST(ExtendedTemporalMemoryTest, testInitInvalidParams)
   {
@@ -1437,7 +1424,7 @@ namespace {
     tm2.read(ss);
 
     // Check that the two temporal memory objects have the same attributes
-    check_tm_eq(tm1, tm2);
+    ASSERT_TRUE(tm1 == tm2);
 
     tm1.sequenceMemoryCompute(sequence[0]);
     tm2.sequenceMemoryCompute(sequence[0]);
@@ -1478,6 +1465,6 @@ namespace {
     ASSERT_EQ(tm1.getWinnerCells(), tm2.getWinnerCells());
     ASSERT_EQ(tm1.basalConnections, tm2.basalConnections);
 
-    check_tm_eq(tm1, tm2);
+    ASSERT_TRUE(tm1 == tm2);
   }
 }

@@ -1791,6 +1791,75 @@ void ExtendedTemporalMemory::read(ExtendedTemporalMemoryProto::Reader& proto)
   }
 }
 
+static set< pair<CellIdx,SynapseIdx> >
+getComparableSegmentSet(const Connections& connections,
+                        const vector<Segment>& segments)
+{
+  set< pair<CellIdx,SynapseIdx> > segmentSet;
+  for (Segment segment : segments)
+  {
+    segmentSet.emplace(connections.cellForSegment(segment),
+                       connections.idxOnCellForSegment(segment));
+  }
+  return segmentSet;
+}
+
+bool ExtendedTemporalMemory::operator==(const ExtendedTemporalMemory& other)
+{
+  if (columnCount_ != other.columnCount_ ||
+      cellsPerColumn_ != other.cellsPerColumn_ ||
+      activationThreshold_ != other.activationThreshold_ ||
+      minThreshold_ != other.minThreshold_ ||
+      sampleSize_ != other.sampleSize_ ||
+      initialPermanence_ != other.initialPermanence_ ||
+      connectedPermanence_ != other.connectedPermanence_ ||
+      permanenceIncrement_ != other.permanenceIncrement_ ||
+      permanenceDecrement_ != other.permanenceDecrement_ ||
+      predictedSegmentDecrement_ != other.predictedSegmentDecrement_ ||
+      activeCells_ != other.activeCells_ ||
+      winnerCells_ != other.winnerCells_ ||
+      maxSegmentsPerCell_ != other.maxSegmentsPerCell_ ||
+      maxSynapsesPerSegment_ != other.maxSynapsesPerSegment_ ||
+      iteration_ != other.iteration_)
+  {
+    return false;
+  }
+
+  if (basalConnections != other.basalConnections ||
+      apicalConnections != other.apicalConnections)
+  {
+    return false;
+  }
+
+  if (getComparableSegmentSet(basalConnections,
+                              activeBasalSegments_) !=
+      getComparableSegmentSet(other.basalConnections,
+                              other.activeBasalSegments_) ||
+      getComparableSegmentSet(basalConnections,
+                              matchingBasalSegments_) !=
+      getComparableSegmentSet(other.basalConnections,
+                              other.matchingBasalSegments_) ||
+      getComparableSegmentSet(apicalConnections,
+                              activeApicalSegments_) !=
+      getComparableSegmentSet(other.apicalConnections,
+                              other.activeApicalSegments_) ||
+      getComparableSegmentSet(apicalConnections,
+                              matchingApicalSegments_) !=
+      getComparableSegmentSet(other.apicalConnections,
+                              other.matchingApicalSegments_))
+  {
+    return false;
+  }
+
+  return true;
+}
+
+bool ExtendedTemporalMemory::operator!=(const ExtendedTemporalMemory& other)
+{
+  return !(*this == other);
+}
+
+
 //----------------------------------------------------------------------
 // Debugging helpers
 //----------------------------------------------------------------------
