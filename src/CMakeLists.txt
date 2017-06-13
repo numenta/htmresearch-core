@@ -46,7 +46,7 @@ endif()
 #
 option(NUPIC_IWYU "Enable include-what-you-use
   (http://include-what-you-use.org/). This requires the iwyu binary to be
-  discoverable by CMake's find_program.")
+  discoverable by CMake's find_program, with a minimum CMake version of 3.3.")
 if(${NUPIC_IWYU})
   find_program(iwyu_path NAMES include-what-you-use iwyu)
   if(NOT iwyu_path)
@@ -200,6 +200,7 @@ message(STATUS "PYTHON_LIBRARIES    = ${PYTHON_LIBRARIES}")
 # Python support
 #
 set(src_py_support_files
+    nupic/py_support/NumpyArrayObject.cpp
     nupic/py_support/NumpyVector.cpp
     nupic/py_support/PyArray.cpp
     nupic/py_support/PyHelpers.cpp
@@ -254,6 +255,8 @@ message(STATUS "CAPNP_CMAKE_DEFINITIONS   = ${CAPNP_CMAKE_DEFINITIONS}")
 message(STATUS "CAPNP_INCLUDE_DIRS        = ${CAPNP_INCLUDE_DIRS}")
 message(STATUS "CAPNP_STATIC_LIB_TARGET   = ${CAPNP_STATIC_LIB_TARGET}")
 
+message(STATUS "SWIG_EXECUTABLE           = ${SWIG_EXECUTABLE}")
+message(STATUS "SWIG_DIR                  = ${SWIG_DIR}")
 
 #
 # Common system libraries for shared libraries and executables
@@ -849,6 +852,16 @@ if (NOT NUPIC_BUILD_PYEXT_MODULES)
           FILES_MATCHING PATTERN "*.c*")
   install(DIRECTORY nupic DESTINATION include/nupic
           FILES_MATCHING PATTERN "*.py")
+
+  install(DIRECTORY "${CAPNP_BINARIES}"
+          DESTINATION "${CMAKE_INSTALL_PREFIX}"
+          FILES_MATCHING PATTERN "capnp*")
+
+  install(DIRECTORY "${SWIG_DIR}"
+          DESTINATION share/swig)
+  install(FILES "${SWIG_EXECUTABLE}"
+          DESTINATION bin)
+
 endif (NOT NUPIC_BUILD_PYEXT_MODULES)
 
 #

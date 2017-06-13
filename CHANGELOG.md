@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.6.3
+
+* Change the Connections to stop doing automatic segment / synapse cleanup
+* Revamp the TemporalMemory proto so that it captures all information
+* For numpy, use a single PyArray_API symbol per binary rather than one per cpp file
+* Use numpy 1.12.1
+* Use pycapnp 0.5.12
+* Use latest pytest 3.0.7, pytest-cov 2.5.0, pytest-xdist 1.16.0
+
+## 0.6.2
+
+* Updated Circle CI configuration and switch to that for OS X builds (instead of Travis CI)
+* Documentation updates: PyRegion
+* IWYU documentation update
+* Fixed C++ boolean ref counting bug that caused segfaults when running Python projects
+* Update pytest and pycapnp dependency versions
+* Implemented byte buffer passing as alternative Python<->C++ strategy for capnp serialization logic. This has some memory/speed overhead but avoids ABI issues that could cause crashes
+* Fixed prototest to get meaningful comparison numbers
+
 ## 0.6.1
 
 * Eliminate installation of unnecessary header files when building nupic.bindings. Install Version.hpp unconditionally for the sake of the deployment usage in .travis.yaml
