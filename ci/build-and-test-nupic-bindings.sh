@@ -45,7 +45,7 @@ INPUT ENVIRONMENT VARIABLES:
 
 OUTPUTS:
   nupic.bindings wheel: On success, the resulting wheel will be located in the
-                        subdirectory nupic_bindings_wheelhouse of the source
+                        subdirectory htmresearch_core_wheelhouse of the source
                         tree's root directory.
 
   test results: nupic.bindings test results will be located in the subdirectory
@@ -77,6 +77,8 @@ BUILD_TYPE=${BUILD_TYPE-"Release"}
 
 
 NUPIC_CORE_ROOT="$( cd "$( dirname "${BASH_SOURCE[0]}" )/.." && pwd )"
+
+DEST_WHEELHOUSE="${NUPIC_CORE_ROOT}/htmresearch_core_wheelhouse"
 
 TEST_RESULTS_DIR="${NUPIC_CORE_ROOT}/test_results"
 
