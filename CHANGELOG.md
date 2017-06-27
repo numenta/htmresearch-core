@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.7.2
+
+* Add SWIG support for Cells4 capnp serialization
+
+## 0.7.1
+
+* SP optimization using minmax_element (#1326)
+* Add capnp serialization to Cells4, Cell, Segment, SegmentUpdates, CState, etc. (#1346)
+* Fix missing actValue in SDR classifier SWIG interface (#1348)
+
+## 0.7.0
+
+* Give clear exception when clients attempt to reuse ClassifierResult instance with SDRClassifier (PR #1342)
+* Remove FastClaClassifier (PR #1341)
+* Allow SDR classifier to handle multiple category (PR #1339)
+* Add Cap'n Proto serialization to SVM (PR #1338)
+
 ## 0.6.3
 
 * Change the Connections to stop doing automatic segment / synapse cleanup

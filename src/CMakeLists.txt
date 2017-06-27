@@ -214,6 +214,8 @@ set(src_py_support_files
 set(src_capnp_specs_rel
   nupic/proto/ArrayProto.capnp
   nupic/proto/BitHistory.capnp
+  nupic/proto/Cell.capnp
+  nupic/proto/Cells4.capnp
   nupic/proto/ClaClassifier.capnp
   nupic/proto/ConnectionsProto.capnp
   nupic/proto/ExtendedTemporalMemoryProto.capnp
@@ -223,10 +225,13 @@ set(src_capnp_specs_rel
   nupic/proto/PyRegionProto.capnp
   nupic/proto/RandomProto.capnp
   nupic/proto/RegionProto.capnp
+  nupic/proto/Segment.capnp
+  nupic/proto/SegmentUpdate.capnp
   nupic/proto/SparseBinaryMatrixProto.capnp
   nupic/proto/SparseMatrixProto.capnp
   nupic/proto/SpatialPoolerProto.capnp
   nupic/proto/SdrClassifier.capnp
+  nupic/proto/SvmProto.capnp
   nupic/proto/TemporalMemoryProto.capnp
   nupic/proto/TestNodeProto.capnp
   nupic/proto/VectorFileSensorProto.capnp
@@ -293,7 +298,6 @@ set(src_nupiccore_srcs
     nupic/algorithms/ClassifierResult.cpp
     nupic/algorithms/CondProbTable.cpp
     nupic/algorithms/Connections.cpp
-    nupic/algorithms/FastClaClassifier.cpp
     nupic/algorithms/GaborNode.cpp
     nupic/algorithms/ImageSensorLite.cpp
     nupic/algorithms/InSynapse.cpp
@@ -522,11 +526,11 @@ add_executable(${src_executable_gtests}
                test/unit/algorithms/Cells4Test.cpp
                test/unit/algorithms/CondProbTableTest.cpp
                test/unit/algorithms/ConnectionsTest.cpp
-               test/unit/algorithms/FastCLAClassifierTest.cpp
                test/unit/algorithms/NearestNeighborUnitTest.cpp
                test/unit/algorithms/SDRClassifierTest.cpp
                test/unit/algorithms/SegmentTest.cpp
                test/unit/algorithms/SpatialPoolerTest.cpp
+               test/unit/algorithms/SvmTest.cpp
                test/unit/algorithms/TemporalMemoryTest.cpp
                test/unit/encoders/ScalarEncoderTest.cpp
                test/unit/engine/InputTest.cpp
