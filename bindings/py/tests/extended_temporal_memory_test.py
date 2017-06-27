@@ -37,7 +37,7 @@ class ETMTest(unittest.TestCase):
 
 
   def testSerialization(self):
-    etm = ExtendedTemporalMemory(columnDimensions=(512,))
+    etm = ExtendedTemporalMemory(columnCount=512)
     proto = ExtendedTemporalMemoryProto.new_message()
     etm.write(proto)
 
@@ -51,4 +51,4 @@ class ETMTest(unittest.TestCase):
         newEtm = ExtendedTemporalMemory.read(proto)
     finally:
       shutil.rmtree(tempdir)
-    self.assertEqual(etm.getColumnDimensions(), newEtm.getColumnDimensions())
+    self.assertEqual(etm.numberOfColumns(), newEtm.numberOfColumns())
