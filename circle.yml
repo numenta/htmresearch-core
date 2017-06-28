@@ -26,13 +26,13 @@ compile:
     # Remove the virtualenv before it can cause problems.  As of May 2017 the CircleCI virtualenv/path setup causes some tests to fail unnecessarily.
     - rm -r ~/virtualenvs
     - mkdir -p build/scripts
-    - cd build/scripts && cmake ../.. -DCMAKE_BUILD_TYPE=Release -DNTA_COV_ENABLED=ON -DCMAKE_INSTALL_PREFIX=../release -DPY_EXTENSIONS_DIR=../../bindings/py/src/nupic/bindings
+    - cd build/scripts && cmake ../.. -DCMAKE_BUILD_TYPE=Release -DNTA_COV_ENABLED=ON -DCMAKE_INSTALL_PREFIX=../release -DPY_EXTENSIONS_DIR=../../bindings/py/src/htmresearch_core
     - VERBOSE=1 cd build/scripts && set -o pipefail && make -j8 | grep -v -F '\\-\\- Installing:'
     - VERBOSE=1 cd build/scripts && set -o pipefail && make install 2>&1 | grep -v -F 'Installing:'
     - python setup.py bdist_wheel
     - mkdir dist && mv bindings/py/dist/*.whl dist/
-    - pip install --use-wheel --user --no-index --find-links=`pwd`/dist/ nupic.bindings
-    
+    - pip install --user dist/*.whl
+
 test:
   override:
     - py.test bindings/py/tests
@@ -53,4 +53,4 @@ test:
     - cp build/artifacts/unit_tests_report.xml $CIRCLE_ARTIFACTS/
     - cp dist/*.whl $CIRCLE_ARTIFACTS/
     # If not on a fork, upload artifacts to S3
-    - if [[ "$CIRCLE_REPOSITORY_URL" == "https://github.com/numenta/nupic.core" ]]; then ci/circle/deploy_s3-osx.sh; else echo "Skipping deployment, as this is a fork"; fi
+    - if [[ "$CIRCLE_REPOSITORY_URL" == "https://github.com/numenta/htmresearch-core" ]]; then ci/circle/deploy_s3-osx.sh; else echo "Skipping deployment, as this is a fork"; fi
