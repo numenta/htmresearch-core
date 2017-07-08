@@ -8,13 +8,13 @@ import pkg_resources
 
 def nupicBindingsPrereleaseInstalled():
   """
-  Make an attempt to determine if a pre-release version of nupic.bindings is
-  installed already.
+  Make an attempt to determine if a pre-release version of htmresearch.bindings 
+  is installed already.
 
   @return: boolean
   """
   try:
-    nupicDistribution = pkg_resources.get_distribution("nupic.bindings")
+    nupicDistribution = pkg_resources.get_distribution("htmresearch.bindings")
     if pkg_resources.parse_version(nupicDistribution.version).is_prerelease:
       # A pre-release dev version of nupic.bindings is installed.
       return True
@@ -54,7 +54,8 @@ def findRequirements():
     # it is up to the user to decide when to update nupic.bindings.  We'll
     # quietly remove the entry in requirements.txt so as to not conflate the
     # two.
-    requirements = [req for req in requirements if "nupic.bindings" not in req]
+    requirements = [req for req in requirements 
+                    if "htmresearch.bindings" not in req]
 
   return requirements
 
