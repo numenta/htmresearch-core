@@ -222,6 +222,8 @@ message(STATUS "CAPNP_STATIC_LIB_TARGET   = ${CAPNP_STATIC_LIB_TARGET}")
 message(STATUS "NUPIC_CORE_INCLUDE_DIR    = ${NUPIC_CORE_INCLUDE_DIR}")
 message(STATUS "SWIG_EXECUTABLE           = ${SWIG_EXECUTABLE}")
 message(STATUS "SWIG_DIR                  = ${SWIG_DIR}")
+message(STATUS "APR1_STATIC_LIB_INC_DIR   = ${APR1_STATIC_LIB_INC_DIR}")
+message(STATUS "APRUTIL1_STATIC_LIB_INC_DIR = ${APRUTIL1_STATIC_LIB_INC_DIR}")
 
 #
 # Common system libraries for shared libraries and executables

@@ -41,6 +41,8 @@
 #   GTEST_STATIC_LIB_TARGET: gtest static library target installed by nupic_core
 #   SWIG_EXECUTABLE: swig executable installed by nupic_core
 #   SWIG_DIR: swig shared directory installed by nupic_core 
+#   APR1_STATIC_LIB_INC_DIR:  
+#   APRUTIL1_STATIC_LIB_INC_DIR:  
 # 
 # See CapnProto.cmake for other variables and functions  
 #
@@ -48,7 +50,7 @@
 # nupic.core version to use
 if (NOT NUPIC_CORE_VERSION)
     set(NUPIC_CORE_VERSION "1.0.0")
-endif(NUPIC_CORE_VERSION)
+endif(NOT NUPIC_CORE_VERSION)
 
 # Check if we should use local sources or download from the releases site 
 if(LOCAL_NUPIC_CORE_SOURCE)
@@ -93,6 +95,12 @@ set(GTEST_STATIC_LIB_TARGET "${NUPIC_CORE_LIB_DIR}/${CMAKE_STATIC_LIBRARY_PREFIX
 # Swig
 set(SWIG_EXECUTABLE "${NUPIC_CORE_THIRDPARTY_DIR}/bin/swig${CMAKE_EXECUTABLE_SUFFIX}" PARENT_SCOPE)
 set(SWIG_DIR "${NUPIC_CORE_THIRDPARTY_DIR}/share/swig/3.0.2" PARENT_SCOPE)
+
+# Apr1
+set(APR1_STATIC_LIB_INC_DIR "${NUPIC_CORE_THIRDPARTY_DIR}/Apr1StaticLib/include" PARENT_SCOPE)
+
+# Aprutil1
+set(APRUTIL1_STATIC_LIB_INC_DIR "${NUPIC_CORE_THIRDPARTY_DIR}/AprUtil1StaticLib/include" PARENT_SCOPE)
 
 # Capnp
 include(CapnProto)
