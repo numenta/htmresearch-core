@@ -550,6 +550,7 @@ endif() # NUPIC_BUILD_PYEXT_MODULES
 #
 install(TARGETS
         ${src_lib_static_htmresearchcore}
+        ${src_executable_gtests}
         RUNTIME DESTINATION bin
         LIBRARY DESTINATION lib
         ARCHIVE DESTINATION lib)
