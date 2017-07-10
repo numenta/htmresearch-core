@@ -419,9 +419,6 @@ if (NUPIC_BUILD_PYEXT_MODULES)
   # all symbols to resolve at link time, so we have to add libpython for this
   # platform
   #
-  # NOTE On Windows nupic.bindings builds we presently build self-contained
-  # CAPNP_LITE, and Windows nupic/nupic.bindings presently has no
-  # dependency on pycapnp.
   if("${PLATFORM}" STREQUAL "windows")
     list(APPEND _SRC_SWIG_LINK_LIBRARIES
          ${PYTHON_LIBRARIES})
@@ -459,9 +456,9 @@ if (NUPIC_BUILD_PYEXT_MODULES)
 
 
   function(BUILD_EXTENSION MODULE_NAME)
-    # Create a nupic.bindings swig extension target with the given Swig module
-    # name. Also, if PY_EXTENSIONS_DIR is specified, request
-    # installation of the extension library and python proxy module.
+    # Create a swig extension target with the given Swig module name.
+    # Also, if PY_EXTENSIONS_DIR is specified, request installation of the 
+    # extension library and python proxy module.
     #
     # The real target name is ${SWIG_MODULE_${MODULE_NAME}_REAL_NAME}.
 
