@@ -61,6 +61,12 @@ else(LOCAL_NUPIC_CORE_SOURCE)
     set(NUPIC_CORE_SOURCE_DIR "${EP_BASE}/Source/nupic_core")
 endif(LOCAL_NUPIC_CORE_SOURCE)
 
+# FIXME: See https://jira.numenta.com/browse/RES-567
+# Fix swig and capnp permissions
+if(UNIX)
+    set(patch_command patch -f -p1 < ${CMAKE_CURRENT_LIST_DIR}/nupic_core.patch)
+endif(UNIX)
+
 # Update file locations based on the external project location
 set(NUPIC_CORE_BUILD_DIR "${EP_BASE}/Build/nupic_core")
 set(NUPIC_CORE_INSTALL_DIR "${EP_BASE}/Install/nupic_core")
@@ -75,6 +81,7 @@ ExternalProject_Add(
     SOURCE_DIR ${LOCAL_NUPIC_CORE_SOURCE}
     URL ${nupic_core_url}
     UPDATE_COMMAND ""
+    PATCH_COMMAND ${patch_command}
     CMAKE_GENERATOR ${CMAKE_GENERATOR}
     CMAKE_ARGS
         ${CAPNP_CMAKE_DEFINITIONS}
@@ -93,8 +100,8 @@ set(NUPIC_CORE_STATIC_LIB_TARGET "${NUPIC_CORE_LIB_DIR}/${CMAKE_STATIC_LIBRARY_P
 set(GTEST_STATIC_LIB_TARGET "${NUPIC_CORE_LIB_DIR}/${CMAKE_STATIC_LIBRARY_PREFIX}gtest${CMAKE_STATIC_LIBRARY_SUFFIX}" PARENT_SCOPE)
 
 # Swig
-set(SWIG_EXECUTABLE "${NUPIC_CORE_THIRDPARTY_DIR}/bin/swig${CMAKE_EXECUTABLE_SUFFIX}" PARENT_SCOPE)
-set(SWIG_DIR "${NUPIC_CORE_THIRDPARTY_DIR}/share/swig/3.0.2" PARENT_SCOPE)
+set(SWIG_EXECUTABLE "${NUPIC_CORE_INSTALL_DIR}/bin/swig${CMAKE_EXECUTABLE_SUFFIX}" PARENT_SCOPE)
+set(SWIG_DIR "${NUPIC_CORE_INSTALL_DIR}/share/swig/3.0.2" PARENT_SCOPE)
 
 # Apr1
 set(APR1_STATIC_LIB_INC_DIR "${NUPIC_CORE_THIRDPARTY_DIR}/Apr1StaticLib/include")
