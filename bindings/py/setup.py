@@ -5,6 +5,10 @@ from distutils.core import Extension
 import pkg_resources
 
 
+PY_BINDINGS = os.path.dirname(os.path.realpath(__file__))
+REPO_DIR = os.path.abspath(os.path.join(PY_BINDINGS, os.pardir, os.pardir))
+
+
 
 def nupicBindingsPrereleaseInstalled():
   """
@@ -23,6 +27,14 @@ def nupicBindingsPrereleaseInstalled():
     # setuptools by default
 
   return False
+
+
+def getVersion():
+  """
+  Get version from local file.
+  """
+  with open(os.path.join(REPO_DIR, "VERSION"), "r") as versionFile:
+    return versionFile.read().strip()
 
 
 
@@ -79,6 +91,7 @@ if __name__ == "__main__":
     # setuptools replaces "_" with "-", so package name is "htmresearch-core",
     # import namespace "htmresearch_core".
     name="htmresearch-core",
+    version=getVersion(),
     package_dir = {"": "src"},
     packages=find_packages("src"),
     package_data={
