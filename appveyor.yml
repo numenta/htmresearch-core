@@ -174,7 +174,7 @@ build_script:
 
   - python setup.py sdist bdist bdist_wheel
 
-  - set NUPIC_BINDINGS_WHEEL_NAME=nupic.bindings-%BINDINGS_VERSION%-cp27-none-%wheel_name_suffix%.whl
+  - set NUPIC_BINDINGS_WHEEL_NAME=htmresearch_core-%BINDINGS_VERSION%-cp27-none-%wheel_name_suffix%.whl
 
   # Copy final wheel to NUPIC_CORE, so that AppVeyor can see it as an artifact
   - ps: copy .\bindings\py\dist\$env:NUPIC_BINDINGS_WHEEL_NAME .
@@ -183,10 +183,10 @@ build_script:
   # iterative builds (via nupic\.nupic_modules long-SHA reference).
   # Ties in with this Pip regex;
   # https://github.com/pypa/pip/blob/develop/pip/wheel.py#L616
-  - ps: copy .\$env:NUPIC_BINDINGS_WHEEL_NAME .\nupic.bindings-$env:APPVEYOR_REPO_COMMIT-cp27-none-$env:wheel_name_suffix.whl
+  - ps: copy .\$env:NUPIC_BINDINGS_WHEEL_NAME .\htmresearch_core-$env:APPVEYOR_REPO_COMMIT-cp27-none-$env:wheel_name_suffix.whl
 
 after_build:
-  # Install nupic.bindings first, because py_region_test.exe depends on it.
+  # Install htmresearch_core first, because py_region_test.exe depends on it.
   - pip install .\%NUPIC_BINDINGS_WHEEL_NAME%
 
   # Run legacy binary tests
@@ -221,7 +221,7 @@ artifacts:
 #       If ($env:APPVEYOR_REPO_TAG -eq "true" -or $env:APPVEYOR_REPO_TAG -eq "True") {
 #         Write-Host "Uploading bindings to PYPI"
 #         pip install httplib requests twine --upgrade
-#         twine upload -u $env:PYPI_USERNAME -p $env:PYPI_PASSWORD -r pypi $env:NUPIC_CORE\bindings\py\dist\nupic.bindings-$env:BINDINGS_VERSION-cp27-none-$env:wheel_name_suffix.whl
+#         twine upload -u $env:PYPI_USERNAME -p $env:PYPI_PASSWORD -r pypi $env:NUPIC_CORE\bindings\py\dist\htmresearch_core-$env:BINDINGS_VERSION-cp27-none-$env:wheel_name_suffix.whl
 #       }
 
 deploy:
@@ -233,7 +233,7 @@ deploy:
     bucket: "artifacts.numenta.org"
     region: us-west-2
     set_public: true
-    artifact: "nupic.bindings-$(APPVEYOR_REPO_COMMIT)-cp27-none-$(wheel_name_suffix).whl"
-    folder: "numenta/nupic.core/releases/nupic.bindings"
+    artifact: "htmresearch_core-$(APPVEYOR_REPO_COMMIT)-cp27-none-$(wheel_name_suffix).whl"
+    folder: "numenta/nupic.core/releases/htmresearch_core"
     on:
       branch: master
