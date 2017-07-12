@@ -29,7 +29,7 @@
 # 
 #    NUPIC_CORE_VERSION: Set NUPIC_CORE_VERSION to any released nupic_core 
 #                        version to override the version cmake will download.
-#                        Default value: "1.0.0"
+#                        Default value: "1.0.1"
 # 
 # OUPUT VARIABLES: Available to the parent scope
 #
@@ -49,7 +49,7 @@
 
 # nupic.core version to use
 if (NOT NUPIC_CORE_VERSION)
-    set(NUPIC_CORE_VERSION "1.0.0")
+    set(NUPIC_CORE_VERSION "1.0.1")
 endif(NOT NUPIC_CORE_VERSION)
 
 # Check if we should use local sources or download from the releases site 
@@ -61,11 +61,6 @@ else(LOCAL_NUPIC_CORE_SOURCE)
     set(NUPIC_CORE_SOURCE_DIR "${EP_BASE}/Source/nupic_core")
 endif(LOCAL_NUPIC_CORE_SOURCE)
 
-# FIXME: See https://jira.numenta.com/browse/RES-567
-# Fix swig and capnp permissions
-if(UNIX)
-    set(patch_command patch -f -p1 < ${CMAKE_CURRENT_LIST_DIR}/nupic_core.patch)
-endif(UNIX)
 
 # Update file locations based on the external project location
 set(NUPIC_CORE_BUILD_DIR "${EP_BASE}/Build/nupic_core")
@@ -81,7 +76,7 @@ ExternalProject_Add(
     SOURCE_DIR ${LOCAL_NUPIC_CORE_SOURCE}
     URL ${nupic_core_url}
     UPDATE_COMMAND ""
-    PATCH_COMMAND ${patch_command}
+    PATCH_COMMAND ""
     CMAKE_GENERATOR ${CMAKE_GENERATOR}
     CMAKE_ARGS
         ${CAPNP_CMAKE_DEFINITIONS}
