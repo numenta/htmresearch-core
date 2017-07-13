@@ -34,7 +34,6 @@
 # 
 # OUPUT VARIABLES: Available to the parent scope
 #
-#   NUPIC_CORE_SOURCE_DIR: local or downloaded location of nupic_core sources
 #   NUPIC_CORE_INCLUDE_DIR: nupic_core include directory
 #   NUPIC_CORE_LIB_DIR: nupic_core libraries directory
 #   NUPIC_CORE_STATIC_LIB_TARGET: nupic_core static library target
@@ -62,6 +61,12 @@ endif(LOCAL_NUPIC_CORE_SOURCE)
 # Use nupic.core local installation
 if(LOCAL_NUPIC_CORE_INSTALL_DIR)
     add_custom_target(nupic_core)
+    # Validate Nupic installation
+    if(NOT EXISTS "${LOCAL_NUPIC_CORE_INSTALL_DIR}/include/nupic")
+        message(FATAL_ERROR "Invalid nupic.core installation. \
+        Make sure nupic.core is installed the LOCAL_NUPIC_CORE_INSTALL_DIR variable \
+        points to a valid nupic.core installation")
+    endif(NOT EXISTS "${LOCAL_NUPIC_CORE_INSTALL_DIR}/include/nupic")
     set(NUPIC_CORE_INSTALL_DIR "${LOCAL_NUPIC_CORE_INSTALL_DIR}")
 else(LOCAL_NUPIC_CORE_INSTALL_DIR)
     # Update file locations based on the external project location
@@ -88,15 +93,7 @@ endif(LOCAL_NUPIC_CORE_INSTALL_DIR)
 set(NUPIC_CORE_INCLUDE_DIR "${NUPIC_CORE_INSTALL_DIR}/include")
 set(NUPIC_CORE_LIB_DIR "${NUPIC_CORE_INSTALL_DIR}/lib")
 
-# Validate Nupic installation
-if(NOT EXISTS "${NUPIC_CORE_INCLUDE_DIR}/nupic")
-    message(FATAL_ERROR "Invalid nupic.core installation. \
-    Make sure nupic.core is installed the LOCAL_NUPIC_CORE_INSTALL_DIR variable \
-    points to a valid nupic.core installation")
-endif()
-
 # Expose nupic.core directories and targets
-set(NUPIC_CORE_SOURCE_DIR "${NUPIC_CORE_SOURCE_DIR}" PARENT_SCOPE)
 set(NUPIC_CORE_INCLUDE_DIR "${NUPIC_CORE_INCLUDE_DIR}" PARENT_SCOPE)
 set(NUPIC_CORE_LIB_DIR "${NUPIC_CORE_LIB_DIR}" PARENT_SCOPE)
 set(NUPIC_CORE_STATIC_LIB_TARGET "${NUPIC_CORE_LIB_DIR}/${CMAKE_STATIC_LIBRARY_PREFIX}nupic_core${CMAKE_STATIC_LIBRARY_SUFFIX}" PARENT_SCOPE)

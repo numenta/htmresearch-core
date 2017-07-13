@@ -221,7 +221,6 @@ message(STATUS "CAPNP_STATIC_LIB_TARGET   = ${CAPNP_STATIC_LIB_TARGET}")
 
 message(STATUS "NUPIC_CORE_INSTALL_DIR    =${NUPIC_CORE_INSTALL_DIR}")
 message(STATUS "NUPIC_CORE_INCLUDE_DIR    = ${NUPIC_CORE_INCLUDE_DIR}")
-message(STATUS "NUPIC_CORE_SOURCE_DIR     = ${NUPIC_CORE_SOURCE_DIR}")
 message(STATUS "SWIG_EXECUTABLE           = ${SWIG_EXECUTABLE}")
 message(STATUS "SWIG_DIR                  = ${SWIG_DIR}")
 
@@ -392,7 +391,6 @@ if (NUPIC_BUILD_PYEXT_MODULES)
       -I${SWIG_DIR}/python
       -I${SWIG_DIR}
       ${src_compiler_definitions}
-      -I${NUPIC_CORE_SOURCE_DIR}/src
   )
 
   file(GLOB_RECURSE swig_header_deps *.i *.hpp *.h)
