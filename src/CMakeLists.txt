@@ -20,7 +20,7 @@
 # -----------------------------------------------------------------------------
 
 cmake_minimum_required(VERSION 2.8)
-project(nupic_core CXX)
+project(htmresearch_core CXX)
 
 set_property(GLOBAL PROPERTY USE_FOLDERS ON)
 set(CMAKE_VERBOSE_MAKEFILE OFF) # toggle for cmake debug
@@ -72,7 +72,7 @@ endif()
 
 
 #
-# Compiler definitions specific to nupic.core code
+# Compiler definitions specific to htmresearch-core code
 #
 
 string(TOUPPER ${PLATFORM} platform_uppercase)
@@ -168,7 +168,7 @@ message(STATUS "CMAKE_PREFIX_PATH   = ${CMAKE_PREFIX_PATH}")
 # Extract current git sha and record in nupic/Version.hpp
 #
 execute_process(COMMAND git rev-parse HEAD
-                OUTPUT_VARIABLE NUPIC_CORE_VERSION
+                OUTPUT_VARIABLE HTMRESEARCH_CORE_VERSION
                 OUTPUT_STRIP_TRAILING_WHITESPACE)
 configure_file(
   "${PROJECT_SOURCE_DIR}/nupic/Version.hpp.in"
@@ -177,13 +177,7 @@ configure_file(
 #
 # Setup gtest
 #
-set(src_lib_static_gtest gtest)
-add_library(${src_lib_static_gtest}
-            STATIC
-            ${REPOSITORY_DIR}/external/common/src/gtest/gtest-all.cpp)
-set_target_properties(${src_lib_static_gtest}
-                      PROPERTIES COMPILE_FLAGS "${src_compile_flags}"
-                      LINK_FLAGS "${INTERNAL_LINKER_FLAGS_OPTIMIZED}")
+set(src_lib_static_gtest "${GTEST_STATIC_LIB_TARGET}")
 
 #
 # Locate Python artifacts
@@ -196,45 +190,10 @@ message(STATUS "PYTHON_INCLUDE_DIRS = ${PYTHON_INCLUDE_DIRS}")
 message(STATUS "PYTHON_LIBRARIES    = ${PYTHON_LIBRARIES}")
 
 
-#
-# Python support
-#
-set(src_py_support_files
-    nupic/py_support/NumpyArrayObject.cpp
-    nupic/py_support/NumpyVector.cpp
-    nupic/py_support/PyArray.cpp
-    nupic/py_support/PyHelpers.cpp
-    nupic/py_support/PythonStream.cpp
-    nupic/bindings/PySparseTensor.cpp
-)
-
-
 # List all .capnp files here. The C++ files will be generated and included
 # when compiling later on.
 set(src_capnp_specs_rel
-  nupic/proto/ArrayProto.capnp
-  nupic/proto/BitHistory.capnp
-  nupic/proto/Cell.capnp
-  nupic/proto/Cells4.capnp
-  nupic/proto/ClaClassifier.capnp
-  nupic/proto/ConnectionsProto.capnp
   nupic/proto/ExtendedTemporalMemoryProto.capnp
-  nupic/proto/LinkProto.capnp
-  nupic/proto/Map.capnp
-  nupic/proto/NetworkProto.capnp
-  nupic/proto/PyRegionProto.capnp
-  nupic/proto/RandomProto.capnp
-  nupic/proto/RegionProto.capnp
-  nupic/proto/Segment.capnp
-  nupic/proto/SegmentUpdate.capnp
-  nupic/proto/SparseBinaryMatrixProto.capnp
-  nupic/proto/SparseMatrixProto.capnp
-  nupic/proto/SpatialPoolerProto.capnp
-  nupic/proto/SdrClassifier.capnp
-  nupic/proto/SvmProto.capnp
-  nupic/proto/TemporalMemoryProto.capnp
-  nupic/proto/TestNodeProto.capnp
-  nupic/proto/VectorFileSensorProto.capnp
 )
 
 # Create custom command for generating C++ code from .capnp schema files.
@@ -260,6 +219,9 @@ message(STATUS "CAPNP_CMAKE_DEFINITIONS   = ${CAPNP_CMAKE_DEFINITIONS}")
 message(STATUS "CAPNP_INCLUDE_DIRS        = ${CAPNP_INCLUDE_DIRS}")
 message(STATUS "CAPNP_STATIC_LIB_TARGET   = ${CAPNP_STATIC_LIB_TARGET}")
 
+message(STATUS "NUPIC_CORE_INSTALL_DIR    =${NUPIC_CORE_INSTALL_DIR}")
+message(STATUS "NUPIC_CORE_INCLUDE_DIR    = ${NUPIC_CORE_INCLUDE_DIR}")
+message(STATUS "NUPIC_CORE_SOURCE_DIR     = ${NUPIC_CORE_SOURCE_DIR}")
 message(STATUS "SWIG_EXECUTABLE           = ${SWIG_EXECUTABLE}")
 message(STATUS "SWIG_DIR                  = ${SWIG_DIR}")
 
@@ -282,298 +244,83 @@ message(STATUS "src_common_os_libs        = ${src_common_os_libs}")
 
 
 #
-# Setup nupic_core_solo static library, consisting of our own sources;
+# Setup htmresearch_core_solo static library, consisting of our own sources;
 #
 # this is an intermediate archive that will be merged with external static
-# libraries in a subsequent step to produce the nupic_core "combined" static
-# library.
+# libraries in a subsequent step to produce the htmresearch_core static library.
 #
-set(src_lib_static_nupiccore_solo nupic_core_solo)
+set(src_lib_static_htmresearchcore_solo htmresearch_core_solo)
 
-set(src_nupiccore_srcs
-    nupic/algorithms/Anomaly.cpp
-    nupic/algorithms/BitHistory.cpp
-    nupic/algorithms/Cell.cpp
-    nupic/algorithms/Cells4.cpp
-    nupic/algorithms/ClassifierResult.cpp
-    nupic/algorithms/CondProbTable.cpp
-    nupic/algorithms/Connections.cpp
-    nupic/algorithms/GaborNode.cpp
-    nupic/algorithms/ImageSensorLite.cpp
-    nupic/algorithms/InSynapse.cpp
-    nupic/algorithms/OutSynapse.cpp
-    nupic/algorithms/Segment.cpp
-    nupic/algorithms/SegmentUpdate.cpp
-    nupic/algorithms/SDRClassifier.cpp
-    nupic/algorithms/SpatialPooler.cpp
-    nupic/algorithms/TemporalMemory.cpp
-    nupic/algorithms/Svm.cpp
-    nupic/encoders/ScalarEncoder.cpp
-    nupic/encoders/ScalarSensor.cpp
-    nupic/engine/Collections.cpp
-    nupic/engine/Input.cpp
-    nupic/engine/Link.cpp
-    nupic/engine/LinkPolicyFactory.cpp
-    nupic/engine/Network.cpp
-    nupic/engine/NuPIC.cpp
-    nupic/engine/Output.cpp
-    nupic/engine/Region.cpp
-    nupic/engine/RegionImpl.cpp
-    nupic/engine/RegionImplFactory.cpp
-    nupic/engine/RegionIo.cpp
-    nupic/engine/RegionParameters.cpp
-    nupic/engine/Spec.cpp
-    nupic/engine/TestFanIn2LinkPolicy.cpp
-    nupic/engine/TestNode.cpp
-    nupic/engine/UniformLinkPolicy.cpp
-    nupic/engine/YAMLUtils.cpp
+set(src_htmresearchcore_srcs
     nupic/experimental/ExtendedTemporalMemory.cpp
-    nupic/math/SparseMatrixAlgorithms.cpp
-    nupic/math/SparseMatrixConnections.cpp
-    nupic/math/StlIo.cpp
-    nupic/math/Topology.cpp
-    nupic/ntypes/ArrayBase.cpp
-    nupic/ntypes/Buffer.cpp
-    nupic/ntypes/BundleIO.cpp
-    nupic/ntypes/Collection.cpp
-    nupic/ntypes/Dimensions.cpp
-    nupic/ntypes/MemParser.cpp
-    nupic/ntypes/Scalar.cpp
-    nupic/ntypes/Value.cpp
-    nupic/os/Directory.cpp
-    nupic/os/DynamicLibrary.cpp
-    nupic/os/Env.cpp
-    nupic/os/FStream.cpp
-    nupic/os/OS.cpp
-    nupic/os/OSUnix.cpp
-    nupic/os/OSWin.cpp
-    nupic/os/Path.cpp
-    nupic/os/Regex.cpp
-    nupic/os/Timer.cpp
-    nupic/regions/PyRegion.cpp
-    nupic/regions/VectorFile.cpp
-    nupic/regions/VectorFileEffector.cpp
-    nupic/regions/VectorFileSensor.cpp
-    nupic/types/BasicType.cpp
-    nupic/types/Fraction.cpp
-    nupic/utils/ArrayProtoUtils.cpp
-    nupic/utils/LoggingException.cpp
-    nupic/utils/LogItem.cpp
-    nupic/utils/MovingAverage.cpp
-    nupic/utils/Random.cpp
-    nupic/utils/StringUtils.cpp
-    nupic/utils/TRandom.cpp
-    nupic/utils/Watcher.cpp)
-
-set(src_lib_static_nupiccore_srcs
+)
+set(src_lib_static_htmresearchcore_srcs
     ${src_capnp_generated_srcs}
-    ${src_py_support_files}
-    ${src_nupiccore_srcs})
+    ${src_htmresearchcore_srcs})
 
-set(src_lib_static_nupiccore_compile_flags
+set(src_lib_static_htmresearchcore_compile_flags
     "${src_compile_flags} -I${src_numpy_core}/include")
 
 message(STATUS "src_compile_flags = ${src_compile_flags}")
-message(STATUS "src_lib_static_nupiccore_compile_flags = ${src_lib_static_nupiccore_compile_flags}")
+message(STATUS "src_lib_static_htmresearchcore_compile_flags = ${src_lib_static_htmresearchcore_compile_flags}")
 
-add_library(${src_lib_static_nupiccore_solo} STATIC
-            ${src_lib_static_nupiccore_srcs})
+add_library(${src_lib_static_htmresearchcore_solo} STATIC
+            ${src_lib_static_htmresearchcore_srcs})
 # nupic_core_solo sources depend on headers installed by these external projects
-add_dependencies(${src_lib_static_nupiccore_solo}
-                 ${YAML_CPP_STATIC_LIB_TARGET}
-                 ${YAML_STATIC_LIB_TARGET}
-                 ${APR1_STATIC_LIB_TARGET}
-                 ${APRUTIL1_STATIC_LIB_TARGET}
-                 ${Z_STATIC_LIB_TARGET})
-set_target_properties(${src_lib_static_nupiccore_solo} PROPERTIES COMPILE_FLAGS
-                      ${src_lib_static_nupiccore_compile_flags})
+add_dependencies(${src_lib_static_htmresearchcore_solo}
+                 ${NUPIC_CORE_STATIC_LIB_TARGET})
+set_target_properties(${src_lib_static_htmresearchcore_solo} PROPERTIES COMPILE_FLAGS
+                      ${src_lib_static_htmresearchcore_compile_flags})
 if(${NUPIC_IWYU})
   # TODO: Create a target that doesn't include the generated capnp schema files
   # since we don't want to run iwyu on them and iwyu can only be applied to
   # CMake targets (not source files directly).
-  set_target_properties(${src_lib_static_nupiccore_solo}
+  set_target_properties(${src_lib_static_htmresearchcore_solo}
     PROPERTIES CXX_INCLUDE_WHAT_YOU_USE ${iwyu_path})
 endif()
 
 
 #
-# Create the nupic_core "combined" static library by merging nupic_core_solo
+# Create the htmresearch_core static library by merging htmresearch_core_solo
 # with our external static libraries
 #
 
 include(src/NupicLibraryUtils) # for MERGE_STATIC_LIBRARIES
 
-set(src_lib_static_nupiccore_combined nupic_core)
+set(src_lib_static_htmresearchcore htmresearch_core)
 
 set(src_external_static_libs
-    ${CAPNP_STATIC_LIB_TARGET}
-    ${YAML_CPP_STATIC_LIB_TARGET}
-    ${YAML_STATIC_LIB_TARGET}
-    ${APR1_STATIC_LIB_TARGET}
-    ${APRUTIL1_STATIC_LIB_TARGET}
-    ${Z_STATIC_LIB_TARGET})
+    ${NUPIC_CORE_STATIC_LIB_TARGET})
 
-set(src_combined_nupiccore_source_archives
-    ${src_lib_static_nupiccore_solo}
+set(src_combined_htmresearchcore_source_archives
+    ${src_lib_static_htmresearchcore_solo}
     ${src_external_static_libs})
 
 # Create a top-level library target for the combined static lib
-merge_static_libraries(${src_lib_static_nupiccore_combined}
-                       "${src_combined_nupiccore_source_archives}")
+merge_static_libraries(${src_lib_static_htmresearchcore}
+                       "${src_combined_htmresearchcore_source_archives}")
 
 
 #
 # Build tests of the nupic_core "combined" static library
 #
-
 # Common libs for test executables
 set(src_common_test_exe_libs
-    ${src_lib_static_nupiccore_combined}
+    ${src_lib_static_htmresearchcore}
     ${PYTHON_LIBRARIES}
     ${src_common_os_libs})
 
 message(STATUS "src_common_test_exe_libs = ${src_common_test_exe_libs}")
-
-
-#
-# Setup test_cpp_region
-#
-set(src_executable_cppregiontest cpp_region_test)
-add_executable(${src_executable_cppregiontest} test/integration/CppRegionTest.cpp)
-target_link_libraries(${src_executable_cppregiontest} ${src_common_test_exe_libs})
-set_target_properties(${src_executable_cppregiontest} PROPERTIES COMPILE_FLAGS ${src_compile_flags})
-set_target_properties(${src_executable_cppregiontest} PROPERTIES LINK_FLAGS "${INTERNAL_LINKER_FLAGS_OPTIMIZED}")
-add_custom_target(tests_cpp_region
-                  COMMAND ${src_executable_cppregiontest}
-                  DEPENDS ${src_executable_cppregiontest}
-                  COMMENT "Executing test ${src_executable_cppregiontest}"
-                  VERBATIM)
-
-#
-# Setup test_py_region
-#
-set(src_executable_pyregiontest py_region_test)
-add_executable(${src_executable_pyregiontest} test/integration/PyRegionTest.cpp)
-target_link_libraries(${src_executable_pyregiontest} ${src_common_test_exe_libs})
-set_target_properties(${src_executable_pyregiontest}
-                      PROPERTIES COMPILE_FLAGS ${src_compile_flags})
-set_target_properties(${src_executable_pyregiontest}
-                      PROPERTIES LINK_FLAGS "${INTERNAL_LINKER_FLAGS_OPTIMIZED}")
-add_custom_target(tests_py_region
-                  COMMAND ${src_executable_pyregiontest}
-                  DEPENDS ${src_executable_pyregiontest}
-                  COMMENT "Executing test ${src_executable_pyregiontest}"
-                  VERBATIM)
-
-#
-# Setup test_connections_performance
-#
-set(src_executable_connectionsperformancetest connections_performance_test)
-add_executable(${src_executable_connectionsperformancetest}
-               test/integration/ConnectionsPerformanceTest.cpp)
-target_link_libraries(${src_executable_connectionsperformancetest}
-                      ${src_common_test_exe_libs})
-set_target_properties(${src_executable_connectionsperformancetest}
-                      PROPERTIES COMPILE_FLAGS ${src_compile_flags})
-set_target_properties(${src_executable_connectionsperformancetest}
-                      PROPERTIES LINK_FLAGS "${INTERNAL_LINKER_FLAGS_OPTIMIZED}")
-add_custom_target(tests_connections_performance
-                  COMMAND ${src_executable_connectionsperformancetest}
-                  DEPENDS ${src_executable_connectionsperformancetest}
-                  COMMENT "Executing test ${src_executable_connectionsperformancetest}"
-                  VERBATIM)
-
-#
-# Setup helloregion example
-#
-set(src_executable_helloregion helloregion)
-add_executable(${src_executable_helloregion} examples/regions/HelloRegions.cpp)
-target_link_libraries(${src_executable_helloregion} ${src_common_test_exe_libs})
-set_target_properties(${src_executable_helloregion}
-                      PROPERTIES COMPILE_FLAGS ${src_compile_flags})
-set_target_properties(${src_executable_helloregion}
-                      PROPERTIES LINK_FLAGS "${INTERNAL_LINKER_FLAGS_OPTIMIZED}")
-
-#
-# Setup prototest example
-#
-set(src_executable_prototest prototest)
-add_executable(${src_executable_prototest} examples/prototest.cpp)
-target_link_libraries(${src_executable_prototest} ${src_common_test_exe_libs})
-set_target_properties(${src_executable_prototest}
-                      PROPERTIES COMPILE_FLAGS ${src_compile_flags})
-set_target_properties(${src_executable_prototest}
-                      PROPERTIES LINK_FLAGS "${INTERNAL_LINKER_FLAGS_OPTIMIZED}")
-
-#
-# Setup HelloSP_TP example
-#
-set(src_executable_hellosptp hello_sp_tp)
-add_executable(${src_executable_hellosptp} examples/algorithms/HelloSP_TP.cpp)
-target_link_libraries(${src_executable_hellosptp} ${src_common_test_exe_libs})
-set_target_properties(${src_executable_hellosptp}
-                      PROPERTIES COMPILE_FLAGS ${src_compile_flags})
-set_target_properties(${src_executable_hellosptp}
-                      PROPERTIES LINK_FLAGS "${INTERNAL_LINKER_FLAGS_OPTIMIZED}")
-
 
 #
 # Setup gtests
 #
 set(src_executable_gtests unit_tests)
 add_executable(${src_executable_gtests}
-               test/unit/algorithms/AnomalyTest.cpp
-               test/unit/algorithms/Cells4Test.cpp
-               test/unit/algorithms/CondProbTableTest.cpp
-               test/unit/algorithms/ConnectionsTest.cpp
-               test/unit/algorithms/NearestNeighborUnitTest.cpp
-               test/unit/algorithms/SDRClassifierTest.cpp
-               test/unit/algorithms/SegmentTest.cpp
-               test/unit/algorithms/SpatialPoolerTest.cpp
-               test/unit/algorithms/SvmTest.cpp
-               test/unit/algorithms/TemporalMemoryTest.cpp
-               test/unit/encoders/ScalarEncoderTest.cpp
-               test/unit/engine/InputTest.cpp
-               test/unit/engine/LinkTest.cpp
-               test/unit/engine/NetworkTest.cpp
-               test/unit/engine/UniformLinkPolicyTest.cpp
-               test/unit/engine/YAMLUtilsTest.cpp
                test/unit/experimental/ExtendedTemporalMemoryTest.cpp
-               test/unit/math/DenseTensorUnitTest.cpp
-               test/unit/math/DomainUnitTest.cpp
-               test/unit/math/IndexUnitTest.cpp
-               test/unit/math/MathsTest.cpp
-               test/unit/math/SegmentMatrixAdapterTest.cpp
-               test/unit/math/SparseBinaryMatrixTest.cpp
-               test/unit/math/SparseMatrix01UnitTest.cpp
-               test/unit/math/SparseMatrixTest.cpp
-               test/unit/math/SparseMatrixUnitTest.cpp
-               test/unit/math/SparseTensorUnitTest.cpp
-               test/unit/math/TopologyTest.cpp
-               test/unit/ntypes/ArrayTest.cpp
-               test/unit/ntypes/BufferTest.cpp
-               test/unit/ntypes/CollectionTest.cpp
-               test/unit/ntypes/DimensionsTest.cpp
-               test/unit/ntypes/MemParserTest.cpp
-               test/unit/ntypes/MemStreamTest.cpp
-               test/unit/ntypes/NodeSetTest.cpp
-               test/unit/ntypes/ScalarTest.cpp
-               test/unit/ntypes/ValueTest.cpp
-               test/unit/os/DirectoryTest.cpp
-               test/unit/os/EnvTest.cpp
-               test/unit/os/OSTest.cpp
-               test/unit/os/PathTest.cpp
-               test/unit/os/RegexTest.cpp
-               test/unit/os/TimerTest.cpp
-               test/unit/py_support/PyHelpersTest.cpp
-               test/unit/types/BasicTypeTest.cpp
-               test/unit/types/ExceptionTest.cpp
-               test/unit/types/FractionTest.cpp
                test/unit/UnitTestMain.cpp
                test/unit/utils/GroupByTest.cpp
-               test/unit/utils/MovingAverageTest.cpp
-               test/unit/utils/RandomTest.cpp
-               test/unit/utils/WatcherTest.cpp)
+)
 target_link_libraries(${src_executable_gtests}
                       ${src_lib_static_gtest}
                       ${src_common_test_exe_libs})
@@ -597,7 +344,6 @@ add_custom_target(tests_unit
 # add_dependencies should be used to set it's dependencies on the custom targets
 # of the inidividual test runners.
 add_custom_target(tests_all
-                  DEPENDS tests_cpp_region
                   DEPENDS tests_unit
                   COMMENT "Running all tests"
                   VERBATIM)
@@ -646,6 +392,7 @@ if (NUPIC_BUILD_PYEXT_MODULES)
       -I${SWIG_DIR}/python
       -I${SWIG_DIR}
       ${src_compiler_definitions}
+      -I${NUPIC_CORE_SOURCE_DIR}/src
   )
 
   file(GLOB_RECURSE swig_header_deps *.i *.hpp *.h)
@@ -662,7 +409,7 @@ if (NUPIC_BUILD_PYEXT_MODULES)
   # symbols should be available automatically when python loads the extension.
   #
   set(_SRC_SWIG_LINK_LIBRARIES
-      ${src_lib_static_nupiccore_combined}
+      ${src_lib_static_htmresearchcore}
       ${src_common_os_libs})
 
   # Common dependencies for our python extensions for use with
@@ -674,9 +421,6 @@ if (NUPIC_BUILD_PYEXT_MODULES)
   # all symbols to resolve at link time, so we have to add libpython for this
   # platform
   #
-  # NOTE On Windows nupic.bindings builds we presently build self-contained
-  # CAPNP_LITE, and Windows nupic/nupic.bindings presently has no
-  # dependency on pycapnp.
   if("${PLATFORM}" STREQUAL "windows")
     list(APPEND _SRC_SWIG_LINK_LIBRARIES
          ${PYTHON_LIBRARIES})
@@ -714,9 +458,9 @@ if (NUPIC_BUILD_PYEXT_MODULES)
 
 
   function(BUILD_EXTENSION MODULE_NAME)
-    # Create a nupic.bindings swig extension target with the given Swig module
-    # name. Also, if PY_EXTENSIONS_DIR is specified, request
-    # installation of the extension library and python proxy module.
+    # Create a swig extension target with the given Swig module name.
+    # Also, if PY_EXTENSIONS_DIR is specified, request installation of the 
+    # extension library and python proxy module.
     #
     # The real target name is ${SWIG_MODULE_${MODULE_NAME}_REAL_NAME}.
 
@@ -807,14 +551,7 @@ endif() # NUPIC_BUILD_PYEXT_MODULES
 # Install targets into CMAKE_INSTALL_PREFIX
 #
 install(TARGETS
-        ${src_lib_static_nupiccore_combined}
-        ${src_lib_static_gtest}
-        ${src_executable_helloregion}
-        ${src_executable_cppregiontest}
-        ${src_executable_pyregiontest}
-        ${src_executable_connectionsperformancetest}
-        ${src_executable_hellosptp}
-        ${src_executable_prototest}
+        ${src_lib_static_htmresearchcore}
         ${src_executable_gtests}
         RUNTIME DESTINATION bin
         LIBRARY DESTINATION lib
@@ -832,47 +569,15 @@ if (NOT NUPIC_BUILD_PYEXT_MODULES)
           FILES_MATCHING PATTERN "*.capnp")
   install(DIRECTORY ${PROJECT_BINARY_DIR}/nupic/ DESTINATION include/nupic/
           FILES_MATCHING PATTERN "*.capnp.h")
-
-  install(DIRECTORY ${REPOSITORY_DIR}/external/common/include/gtest
-          DESTINATION include/gtest
-          FILES_MATCHING PATTERN "*.h*")
-
-  install(DIRECTORY "${REPOSITORY_DIR}/external/common/include/"
-          DESTINATION include)
-
-  install(DIRECTORY "${src_numpy_core}/lib/"
-          DESTINATION lib)
-  install(DIRECTORY "${src_numpy_core}/include/"
-          DESTINATION include)
-
-  foreach(directory ${CAPNP_INCLUDE_DIRS})
-    install(DIRECTORY "${directory}/capnp"
-            DESTINATION include)
-    install(DIRECTORY "${directory}/kj"
-            DESTINATION include)
-  endforeach()
-
-  install(DIRECTORY nupic/py_support DESTINATION include/nupic
-          FILES_MATCHING PATTERN "*.c*")
   install(DIRECTORY nupic DESTINATION include/nupic
           FILES_MATCHING PATTERN "*.py")
-
-  install(DIRECTORY "${CAPNP_BINARIES}"
-          DESTINATION "${CMAKE_INSTALL_PREFIX}"
-          FILES_MATCHING PATTERN "capnp*")
-
-  install(DIRECTORY "${SWIG_DIR}"
-          DESTINATION share/swig)
-  install(FILES "${SWIG_EXECUTABLE}"
-          DESTINATION bin)
-
 endif (NOT NUPIC_BUILD_PYEXT_MODULES)
 
 #
 # `make package` results in
-# nupic_core-${NUPIC_CORE_VERSION}-${PLATFORM}${BITNESS}${PLATFORM_SUFFIX}.tar.gz binary release
+# htmresearch_core-${htmresearch_core_VERSION}-${PLATFORM}${BITNESS}${PLATFORM_SUFFIX}.tar.gz binary release
 #
 
 set(CPACK_GENERATOR "TGZ")
-set(CPACK_PACKAGE_FILE_NAME "nupic_core-${NUPIC_CORE_VERSION}-${PLATFORM}${BITNESS}${PLATFORM_SUFFIX}")
+set(CPACK_PACKAGE_FILE_NAME "htmresearch_core-${htmresearch_core_VERSION}-${PLATFORM}${BITNESS}${PLATFORM_SUFFIX}")
 include(CPack)

@@ -1378,7 +1378,8 @@ namespace {
     ASSERT_EQ(numberOfCells, 2048 * 32);
   }
 
-  TEST(ExtendedTemporalMemoryTest, testWrite)
+  // FIXME: See  https://jira.numenta.com/browse/RES-566
+  TEST(ExtendedTemporalMemoryTest, DISABLED_testWrite)
   {
     ExtendedTemporalMemory tm1, tm2;
 

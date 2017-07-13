@@ -20,7 +20,7 @@
 # -----------------------------------------------------------------------------
 
 cmake_minimum_required(VERSION 2.8)
-project(nupic_core_main CXX)
+project(htmresearch_core CXX)
 
 set(CMAKE_MODULE_PATH "${PROJECT_SOURCE_DIR}")
 
@@ -47,7 +47,7 @@ endif()
 # Global NuPIC CMake options
 #
 option(NUPIC_BUILD_PYEXT_MODULES
-       "Turn on building of python extension modules for nupic.bindings; turn off to build only static nupic_core lib with full symbol visibility."
+       "Turn on building of python extension modules for htmresearch core bindings; turn off to build only static htmresearch core lib with full symbol visibility."
        ON)
 
 message(STATUS "NUPIC_BUILD_PYEXT_MODULES = ${NUPIC_BUILD_PYEXT_MODULES}")
@@ -82,5 +82,5 @@ include(CommonCompilerConfig)
 add_subdirectory(external)
 include_directories(SYSTEM ${EXTERNAL_INCLUDE_DIRS})
 
-# Now build nupic_core project.
+# Now build htmresearch_core project.
 add_subdirectory(src)
