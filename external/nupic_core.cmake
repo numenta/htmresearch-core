@@ -30,7 +30,7 @@
 # 
 #    NUPIC_CORE_VERSION: Set NUPIC_CORE_VERSION to any released nupic_core 
 #                        version to override the version cmake will download.
-#                        Default value: "1.0.1"
+#                        See NUPIC_CORE_VERSION file for default value.
 # 
 # OUPUT VARIABLES: Available to the parent scope
 #
@@ -46,7 +46,7 @@
 
 # nupic.core version to use
 if (NOT NUPIC_CORE_VERSION)
-    set(NUPIC_CORE_VERSION "1.0.1")
+    file (STRINGS "${CMAKE_SOURCE_DIR}/NUPIC_CORE_VERSION" NUPIC_CORE_VERSION)
 endif(NOT NUPIC_CORE_VERSION)
 
 # Check if we should use local sources or download from the releases site 
