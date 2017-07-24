@@ -75,9 +75,7 @@ _EXPERIMENTAL = _experimental
 #include <nupic/proto/ExtendedTemporalMemoryProto.capnp.h>
 
 #include <nupic/py_support/NumpyVector.hpp>
-#if !CAPNP_LITE
 #include <nupic/py_support/PyCapnp.hpp>
-#endif
 #include <nupic/py_support/PythonStream.hpp>
 #include <nupic/py_support/PyHelpers.hpp>
 

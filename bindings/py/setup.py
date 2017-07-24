@@ -5,11 +5,15 @@ from distutils.core import Extension
 import pkg_resources
 
 
+PY_BINDINGS = os.path.dirname(os.path.realpath(__file__))
+REPO_DIR = os.path.abspath(os.path.join(PY_BINDINGS, os.pardir, os.pardir))
+
+
 
 def nupicBindingsPrereleaseInstalled():
   """
-  Make an attempt to determine if a pre-release version of nupic.bindings is
-  installed already.
+  Make an attempt to determine if a pre-release version of nupic.bindings 
+  is installed already.
 
   @return: boolean
   """
@@ -23,6 +27,14 @@ def nupicBindingsPrereleaseInstalled():
     # setuptools by default
 
   return False
+
+
+def getVersion():
+  """
+  Get version from local file.
+  """
+  with open(os.path.join(REPO_DIR, "VERSION"), "r") as versionFile:
+    return versionFile.read().strip()
 
 
 
@@ -54,7 +66,8 @@ def findRequirements():
     # it is up to the user to decide when to update nupic.bindings.  We'll
     # quietly remove the entry in requirements.txt so as to not conflate the
     # two.
-    requirements = [req for req in requirements if "nupic.bindings" not in req]
+    requirements = [req for req in requirements 
+                    if "nupic.bindings" not in req]
 
   return requirements
 
@@ -78,6 +91,7 @@ if __name__ == "__main__":
     # setuptools replaces "_" with "-", so package name is "htmresearch-core",
     # import namespace "htmresearch_core".
     name="htmresearch-core",
+    version=getVersion(),
     package_dir = {"": "src"},
     packages=find_packages("src"),
     package_data={
