@@ -116,6 +116,35 @@ using namespace nupic;
 
 %}
 
+%inline {
+  PyObject* dictFromPredictionData(
+    const nupic::experimental::extended_temporal_memory::PredictionData& pd)
+  {
+    PyObject* d = PyDict_New();
+    PyDict_SetItem(d, PyString_FromString("predictedCells"),
+                   nupic::NumpyVectorT<CellIdx>(pd.predictedCells.size(),
+                                                pd.predictedCells.data())
+                   .forPython());
+    PyDict_SetItem(d, PyString_FromString("activeBasalSegments"),
+                   nupic::NumpyVectorT<Segment>(pd.activeBasalSegments.size(),
+                                                pd.activeBasalSegments.data())
+                   .forPython());
+    PyDict_SetItem(d, PyString_FromString("activeApicalSegments"),
+                   nupic::NumpyVectorT<Segment>(pd.activeApicalSegments.size(),
+                                                pd.activeApicalSegments.data())
+                   .forPython());
+    PyDict_SetItem(d, PyString_FromString("matchingBasalSegments"),
+                   nupic::NumpyVectorT<Segment>(pd.matchingBasalSegments.size(),
+                                                pd.matchingBasalSegments.data())
+                   .forPython());
+    PyDict_SetItem(d, PyString_FromString("matchingApicalSegments"),
+                   nupic::NumpyVectorT<Segment>(pd.matchingApicalSegments.size(),
+                                                pd.matchingApicalSegments.data())
+                   .forPython());
+    return d;
+  }
+}
+
 %extend nupic::experimental::extended_temporal_memory::ExtendedTemporalMemory
 {
   %pythoncode %{
@@ -334,8 +363,9 @@ using namespace nupic;
       @param apicalInput (sequence)
       Sorted list of active input bits for the apical dendrite segments.
 
-      @returns (numpy array)
-      Indices of cells that would be predicted.
+      @returns (dict)
+      A results dict which contains keys: predictedCells, activeBasalSegments,
+      activeApicalSegments.
       """
       return self.convertedGetPredictionsForInput(
         numpy.asarray(basalInput, "uint32"),
@@ -351,8 +381,9 @@ using namespace nupic;
       @param apicalInput (sequence)
       Sorted list of active input bits for the apical dendrite segments.
 
-      @returns (numpy array)
-      Indices of cells that would be predicted by the current active cells.
+      @returns (dict)
+      A results dict which contains keys: predictedCells, activeBasalSegments,
+      activeApicalSegments.
       """
       return self.convertedGetSequenceMemoryPredictions(
         numpy.asarray(apicalInput, "uint32"))
@@ -497,13 +528,10 @@ using namespace nupic;
     nupic::NumpyVectorWeakRefT<nupic::UInt> basalInput(py_basalInput);
     nupic::NumpyVectorWeakRefT<nupic::UInt> apicalInput(py_apicalInput);
 
-    std::vector<CellIdx> predictedCells = self->getPredictionsForInput(
-      basalInput.begin(), basalInput.end(),
-      apicalInput.begin(), apicalInput.end());
-
-    return nupic::NumpyVectorT<CellIdx>(predictedCells.size(),
-                                        predictedCells.data())
-      .forPython();
+    return dictFromPredictionData(
+      self->getPredictionsForInput(
+        basalInput.begin(), basalInput.end(),
+        apicalInput.begin(), apicalInput.end()));
   }
 
   PyObject* convertedGetSequenceMemoryPredictions(
@@ -511,12 +539,9 @@ using namespace nupic;
   {
     nupic::NumpyVectorWeakRefT<nupic::UInt> apicalInput(py_apicalInput);
 
-    std::vector<CellIdx> predictedCells = self->getSequenceMemoryPredictions(
-      apicalInput.begin(), apicalInput.end());
-
-    return nupic::NumpyVectorT<CellIdx>(predictedCells.size(),
-                                        predictedCells.data())
-      .forPython();
+    return dictFromPredictionData(
+      self->getSequenceMemoryPredictions(
+        apicalInput.begin(), apicalInput.end()));
   }
 }
 

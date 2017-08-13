@@ -40,6 +40,18 @@ namespace nupic {
 
       using namespace algorithms::connections;
 
+      struct PredictionData {
+        std::vector<CellIdx> predictedCells;
+        std::vector<Segment> activeBasalSegments;
+        std::vector<Segment> activeApicalSegments;
+        std::vector<Segment> matchingBasalSegments;
+        std::vector<Segment> matchingApicalSegments;
+        std::vector<UInt> basalOverlaps;
+        std::vector<UInt> apicalOverlaps;
+        std::vector<UInt> basalPotentialOverlaps;
+        std::vector<UInt> apicalPotentialOverlaps;
+      };
+
       /**
        * A fast Temporal Memory implementation with apical dendrites and
        * customizable basal input.
@@ -366,9 +378,10 @@ namespace nupic {
          * @param apicalInput
          * Sorted list of active input bits for the apical dendrite segments.
          *
-         * @returns Indices of cells that would be predicted.
+         * @returns
+         * Cells/segments that would be predicted.
          */
-        std::vector<CellIdx> getPredictionsForInput(
+        PredictionData getPredictionsForInput(
           const CellIdx* basalInputBegin,
           const CellIdx* basalInputEnd,
           const CellIdx* apicalInputBegin,
@@ -383,9 +396,9 @@ namespace nupic {
          * Sorted list of active input bits for the apical dendrite segments.
          *
          * @returns
-         * Indices of cells that would be predicted by the current active cells.
+         * Cells/segments that would be predicted by the current active cells.
          */
-        std::vector<CellIdx> getSequenceMemoryPredictions(
+        PredictionData getSequenceMemoryPredictions(
           const CellIdx* apicalInputBegin,
           const CellIdx* apicalInputEnd) const;
 

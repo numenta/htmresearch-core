@@ -1297,41 +1297,35 @@ vector<CellIdx> ExtendedTemporalMemory::cellsForColumn(UInt column)
   return cellsInColumn;
 }
 
-vector<CellIdx> ExtendedTemporalMemory::getPredictionsForInput(
+PredictionData ExtendedTemporalMemory::getPredictionsForInput(
   const CellIdx* basalInputBegin,
   const CellIdx* basalInputEnd,
   const CellIdx* apicalInputBegin,
   const CellIdx* apicalInputEnd) const
 {
-  vector<CellIdx> predictedCells;
-  vector<Segment>
-    activeBasalSegments, matchingBasalSegments,
-    activeApicalSegments, matchingApicalSegments;
-  vector<UInt>
-    basalOverlaps, basalPotentialOverlaps,
-    apicalOverlaps, apicalPotentialOverlaps;
+  PredictionData pd;
 
   calculateOverlaps(
-    basalOverlaps, activeBasalSegments,
-    basalPotentialOverlaps, matchingBasalSegments,
+    pd.basalOverlaps, pd.activeBasalSegments,
+    pd.basalPotentialOverlaps, pd.matchingBasalSegments,
     basalInputBegin, basalInputEnd, basalConnections,
     connectedPermanence_, activationThreshold_, minThreshold_);
 
   calculateOverlaps(
-    apicalOverlaps, activeApicalSegments,
-    apicalPotentialOverlaps, matchingApicalSegments,
+    pd.apicalOverlaps, pd.activeApicalSegments,
+    pd.apicalPotentialOverlaps, pd.matchingApicalSegments,
     apicalInputBegin, apicalInputEnd, apicalConnections,
     connectedPermanence_, activationThreshold_, minThreshold_);
 
-  calculatePredictedCells(predictedCells,
-                          activeBasalSegments, basalConnections,
-                          activeApicalSegments, apicalConnections,
+  calculatePredictedCells(pd.predictedCells,
+                          pd.activeBasalSegments, basalConnections,
+                          pd.activeApicalSegments, apicalConnections,
                           cellsPerColumn_);
 
-  return predictedCells;
+  return pd;
 }
 
-vector<CellIdx> ExtendedTemporalMemory::getSequenceMemoryPredictions(
+PredictionData ExtendedTemporalMemory::getSequenceMemoryPredictions(
   const CellIdx* apicalInputBegin,
   const CellIdx* apicalInputEnd) const
 {
