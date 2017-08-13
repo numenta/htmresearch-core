@@ -323,6 +323,41 @@ using namespace nupic;
         npApical, npApicalGrowth, learn)
 
 
+    def getPredictionsForInput(self, basalInput, apicalInput=()):
+      """
+      Calculate the cells that would be predicted by the given basal and
+      apical input.
+
+      @param basalInput (sequence)
+      Sorted list of active input bits for the basal dendrite segments.
+
+      @param apicalInput (sequence)
+      Sorted list of active input bits for the apical dendrite segments.
+
+      @returns (numpy array)
+      Indices of cells that would be predicted.
+      """
+      return self.convertedGetPredictionsForInput(
+        numpy.asarray(basalInput, "uint32"),
+        numpy.asarray(apicalInput, "uint32"))
+
+
+    def getSequenceMemoryPredictions(self, apicalInput=()):
+      """
+      Equivalent to:
+
+       etm.getPredictionsForInput(etm.getActiveCells(), apicalInput)
+
+      @param apicalInput (sequence)
+      Sorted list of active input bits for the apical dendrite segments.
+
+      @returns (numpy array)
+      Indices of cells that would be predicted by the current active cells.
+      """
+      return self.convertedGetSequenceMemoryPredictions(
+        numpy.asarray(apicalInput, "uint32"))
+
+
     def reset(self):
       _EXPERIMENTAL.ExtendedTemporalMemory_reset(self)
 
@@ -453,6 +488,35 @@ using namespace nupic;
                                 apicalGrowthCandidates.begin(),
                                 apicalGrowthCandidates.end(),
                                 learn);
+  }
+
+  PyObject* convertedGetPredictionsForInput(
+    PyObject *py_basalInput,
+    PyObject *py_apicalInput)
+  {
+    nupic::NumpyVectorWeakRefT<nupic::UInt> basalInput(py_basalInput);
+    nupic::NumpyVectorWeakRefT<nupic::UInt> apicalInput(py_apicalInput);
+
+    std::vector<CellIdx> predictedCells = self->getPredictionsForInput(
+      basalInput.begin(), basalInput.end(),
+      apicalInput.begin(), apicalInput.end());
+
+    return nupic::NumpyVectorT<CellIdx>(predictedCells.size(),
+                                        predictedCells.data())
+      .forPython();
+  }
+
+  PyObject* convertedGetSequenceMemoryPredictions(
+    PyObject *py_apicalInput)
+  {
+    nupic::NumpyVectorWeakRefT<nupic::UInt> apicalInput(py_apicalInput);
+
+    std::vector<CellIdx> predictedCells = self->getSequenceMemoryPredictions(
+      apicalInput.begin(), apicalInput.end());
+
+    return nupic::NumpyVectorT<CellIdx>(predictedCells.size(),
+                                        predictedCells.data())
+      .forPython();
   }
 }
 

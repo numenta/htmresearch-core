@@ -354,7 +354,40 @@ namespace nupic {
          *
          * @return Number of cells
          */
-        UInt numberOfCells(void);
+        UInt numberOfCells() const;
+
+        /**
+         * Calculate the cells that would be predicted by the given basal and
+         * apical input.
+         *
+         * @param basalInput
+         * Sorted list of active input bits for the basal dendrite segments.
+         *
+         * @param apicalInput
+         * Sorted list of active input bits for the apical dendrite segments.
+         *
+         * @returns Indices of cells that would be predicted.
+         */
+        std::vector<CellIdx> getPredictionsForInput(
+          const CellIdx* basalInputBegin,
+          const CellIdx* basalInputEnd,
+          const CellIdx* apicalInputBegin,
+          const CellIdx* apicalInputEnd) const;
+
+        /**
+         * Equivalent to:
+         *
+         *  etm.getPredictionsForInput(etm.getActiveCells(), apicalInput)
+         *
+         * @param apicalInput
+         * Sorted list of active input bits for the apical dendrite segments.
+         *
+         * @returns
+         * Indices of cells that would be predicted by the current active cells.
+         */
+        std::vector<CellIdx> getSequenceMemoryPredictions(
+          const CellIdx* apicalInputBegin,
+          const CellIdx* apicalInputEnd) const;
 
         /**
         * Returns the indices of the active cells.

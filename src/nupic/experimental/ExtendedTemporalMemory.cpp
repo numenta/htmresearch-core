@@ -946,14 +946,14 @@ void ExtendedTemporalMemory::activateCells_(
   }
 }
 
-static void calculateExcitation(
+static void calculateOverlaps(
   vector<UInt32>& overlaps,
   vector<Segment>& activeSegments,
   vector<UInt32>& potentialOverlaps,
   vector<Segment>& matchingSegments,
-  Connections& connections,
   const CellIdx* activeInputBegin,
   const CellIdx* activeInputEnd,
+  const Connections& connections,
   Permanence connectedPermanence,
   UInt activationThreshold,
   UInt minThreshold)
@@ -1003,36 +1003,21 @@ static void calculateExcitation(
             });
 }
 
-void ExtendedTemporalMemory::depolarizeCells_(
-  const CellIdx* basalInputBegin,
-  const CellIdx* basalInputEnd,
-  const CellIdx* apicalInputBegin,
-  const CellIdx* apicalInputEnd,
-  bool learn)
+static void calculatePredictedCells(
+  vector<CellIdx>& predictedCells,
+  const vector<Segment>& activeBasalSegments,
+  const Connections& basalConnections,
+  const vector<Segment>& activeApicalSegments,
+  const Connections& apicalConnections,
+  UInt cellsPerColumn)
 {
-  predictedCells_.clear();
-
-  calculateExcitation(
-    basalOverlaps_, activeBasalSegments_,
-    basalPotentialOverlaps_, matchingBasalSegments_,
-    basalConnections,
-    basalInputBegin, basalInputEnd,
-    connectedPermanence_, activationThreshold_, minThreshold_);
-
-  calculateExcitation(
-    apicalOverlaps_, activeApicalSegments_,
-    apicalPotentialOverlaps_, matchingApicalSegments_,
-    apicalConnections,
-    apicalInputBegin, apicalInputEnd,
-    connectedPermanence_, activationThreshold_, minThreshold_);
-
   const auto columnForBasalSegment = [&](Segment segment)
-    { return basalConnections.cellForSegment(segment) / cellsPerColumn_; };
+    { return basalConnections.cellForSegment(segment) / cellsPerColumn; };
   const auto columnForApicalSegment = [&](Segment segment)
-    { return apicalConnections.cellForSegment(segment) / cellsPerColumn_; };
+    { return apicalConnections.cellForSegment(segment) / cellsPerColumn; };
 
-  for (auto& columnData : groupBy(activeBasalSegments_, columnForBasalSegment,
-                                  activeApicalSegments_, columnForApicalSegment))
+  for (auto& columnData : groupBy(activeBasalSegments, columnForBasalSegment,
+                                  activeApicalSegments, columnForApicalSegment))
   {
     UInt column;
     vector<Segment>::const_iterator
@@ -1084,11 +1069,37 @@ void ExtendedTemporalMemory::depolarizeCells_(
                             cellActiveApicalBegin, cellActiveApicalEnd)
             == maxDepolarization)
         {
-          predictedCells_.push_back(cell);
+          predictedCells.push_back(cell);
         }
       }
     }
   }
+}
+
+void ExtendedTemporalMemory::depolarizeCells_(
+  const CellIdx* basalInputBegin,
+  const CellIdx* basalInputEnd,
+  const CellIdx* apicalInputBegin,
+  const CellIdx* apicalInputEnd,
+  bool learn)
+{
+  calculateOverlaps(
+    basalOverlaps_, activeBasalSegments_,
+    basalPotentialOverlaps_, matchingBasalSegments_,
+    basalInputBegin, basalInputEnd, basalConnections,
+    connectedPermanence_, activationThreshold_, minThreshold_);
+
+  calculateOverlaps(
+    apicalOverlaps_, activeApicalSegments_,
+    apicalPotentialOverlaps_, matchingApicalSegments_,
+    apicalInputBegin, apicalInputEnd, apicalConnections,
+    connectedPermanence_, activationThreshold_, minThreshold_);
+
+  predictedCells_.clear();
+  calculatePredictedCells(predictedCells_,
+                          activeBasalSegments_, basalConnections,
+                          activeApicalSegments_, apicalConnections,
+                          cellsPerColumn_);
 
   if (learn)
   {
@@ -1195,6 +1206,8 @@ void ExtendedTemporalMemory::sequenceMemoryCompute(
   const CellIdx* apicalGrowthCandidatesEnd,
   bool learn)
 {
+  NTA_CHECK(basalInputSize_ == numberOfCells());
+
   const vector<CellIdx> prevActiveCells(activeCells_);
   const vector<CellIdx> prevWinnerCells(winnerCells_);
 
@@ -1214,6 +1227,8 @@ void ExtendedTemporalMemory::sequenceMemoryCompute(
   const vector<CellIdx>& apicalGrowthCandidates,
   bool learn)
 {
+  NTA_CHECK(basalInputSize_ == numberOfCells());
+
   const vector<CellIdx> prevActiveCells(activeCells_);
   const vector<CellIdx> prevWinnerCells(winnerCells_);
 
@@ -1282,7 +1297,52 @@ vector<CellIdx> ExtendedTemporalMemory::cellsForColumn(UInt column)
   return cellsInColumn;
 }
 
-UInt ExtendedTemporalMemory::numberOfCells(void)
+vector<CellIdx> ExtendedTemporalMemory::getPredictionsForInput(
+  const CellIdx* basalInputBegin,
+  const CellIdx* basalInputEnd,
+  const CellIdx* apicalInputBegin,
+  const CellIdx* apicalInputEnd) const
+{
+  vector<CellIdx> predictedCells;
+  vector<Segment>
+    activeBasalSegments, matchingBasalSegments,
+    activeApicalSegments, matchingApicalSegments;
+  vector<UInt>
+    basalOverlaps, basalPotentialOverlaps,
+    apicalOverlaps, apicalPotentialOverlaps;
+
+  calculateOverlaps(
+    basalOverlaps, activeBasalSegments,
+    basalPotentialOverlaps, matchingBasalSegments,
+    basalInputBegin, basalInputEnd, basalConnections,
+    connectedPermanence_, activationThreshold_, minThreshold_);
+
+  calculateOverlaps(
+    apicalOverlaps, activeApicalSegments,
+    apicalPotentialOverlaps, matchingApicalSegments,
+    apicalInputBegin, apicalInputEnd, apicalConnections,
+    connectedPermanence_, activationThreshold_, minThreshold_);
+
+  calculatePredictedCells(predictedCells,
+                          activeBasalSegments, basalConnections,
+                          activeApicalSegments, apicalConnections,
+                          cellsPerColumn_);
+
+  return predictedCells;
+}
+
+vector<CellIdx> ExtendedTemporalMemory::getSequenceMemoryPredictions(
+  const CellIdx* apicalInputBegin,
+  const CellIdx* apicalInputEnd) const
+{
+  NTA_CHECK(basalInputSize_ == numberOfCells());
+
+  return getPredictionsForInput(
+    activeCells_.data(), activeCells_.data() + activeCells_.size(),
+    apicalInputBegin, apicalInputEnd);
+}
+
+UInt ExtendedTemporalMemory::numberOfCells() const
 {
   return numberOfColumns() * cellsPerColumn_;
 }
