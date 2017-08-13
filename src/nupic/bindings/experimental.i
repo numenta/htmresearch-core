@@ -256,7 +256,7 @@ using namespace nupic;
       List of bits that the active cells may grow new basal synapses to.
       If None, the basalInput is assumed to be growth candidates.
 
-      @param growthCandidatesExternalApical (sequence)
+      @param apicalGrowthCandidates (sequence)
       List of bits that the active cells may grow new apical synapses to
       If None, the apicalInput is assumed to be growth candidates.
 
@@ -283,6 +283,44 @@ using namespace nupic;
         numpy.asarray(activeColumns, "uint32"),
         npBasal, npApical, npBasalGrowth, npApicalGrowth,
         learn)
+
+
+    def sequenceMemoryCompute(self,
+                              activeColumns,
+                              apicalInput=(),
+                              apicalGrowthCandidates=None,
+                              learn=True):
+      """
+      Equivalent to:
+
+         etm.compute(activeColumns,
+                     etm.getActiveCells(),
+                     apicalInput,
+                     etm.getWinnerCells(),
+                     apicalGrowthCandidates);
+
+      @param activeColumns (sequence)
+      Sorted list of active columns.
+
+      @param apicalInput (sequence)
+      Sorted list of active input bits for the apical dendrite segments
+
+      @param apicalGrowthCandidates (sequence)
+      List of bits that the active cells may grow new apical synapses to
+      If None, the apicalInput is assumed to be growth candidates.
+
+      @param learn (bool)
+      Whether or not learning is enabled
+      """
+
+      npApical = numpy.asarray(apicalInput, "uint32")
+      npApicalGrowth = (numpy.asarray(apicalGrowthCandidates, "uint32")
+                        if apicalGrowthCandidates is not None
+                        else npApical)
+
+      self.convertedSequenceMemoryCompute(
+        numpy.asarray(activeColumns, "uint32"),
+        npApical, npApicalGrowth, learn)
 
 
     def reset(self):
@@ -397,6 +435,24 @@ using namespace nupic;
                   apicalGrowthCandidates.begin(),
                   apicalGrowthCandidates.end(),
                   learn);
+  }
+
+  inline void convertedSequenceMemoryCompute(
+    PyObject *py_activeColumns,
+    PyObject *py_apicalInput,
+    PyObject *py_apicalGrowthCandidates,
+    bool learn)
+  {
+    nupic::NumpyVectorWeakRefT<nupic::UInt> activeColumns(py_activeColumns);
+    nupic::NumpyVectorWeakRefT<nupic::UInt> apicalInput(py_apicalInput);
+    nupic::NumpyVectorWeakRefT<nupic::UInt>
+      apicalGrowthCandidates(py_apicalGrowthCandidates);
+
+    self->sequenceMemoryCompute(activeColumns.begin(), activeColumns.end(),
+                                apicalInput.begin(), apicalInput.end(),
+                                apicalGrowthCandidates.begin(),
+                                apicalGrowthCandidates.end(),
+                                learn);
   }
 }
 
