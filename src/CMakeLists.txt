@@ -252,6 +252,7 @@ set(src_lib_static_htmresearchcore_solo htmresearch_core_solo)
 
 set(src_htmresearchcore_srcs
     nupic/experimental/ExtendedTemporalMemory.cpp
+    nupic/experimental/SDRSelection.cpp
 )
 set(src_lib_static_htmresearchcore_srcs
     ${src_capnp_generated_srcs}
