@@ -91,6 +91,30 @@ using namespace nupic;
 
 %}
 
+%{
+#include <nupic/experimental/SDRSelection.hpp>
+%}
+
+%inline {
+  PyObject* enumerateDistantSDRsBruteForce(UInt n, UInt w, UInt threshold)
+  {
+    std::vector<std::vector<UInt> > results =
+      nupic::experimental::sdr_selection::enumerateDistantSDRsBruteForce(
+      n, w, threshold);
+
+    PyObject* pyResults = PyTuple_New(results.size());
+    for (size_t i = 0; i < results.size(); i++)
+    {
+      PyTuple_SetItem(pyResults, i,
+                      nupic::NumpyVectorT<UInt>(results[i].size(),
+                                                results[i].data())
+                      .forPython());
+    }
+
+    return pyResults;
+  }
+}
+
 //
 // Numpy API
 //
