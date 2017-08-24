@@ -45,7 +45,7 @@
 #include <kj/std/iostream.h>
 
 #include <nupic/algorithms/Connections.hpp>
-#include <nupic/experimental/ExtendedTemporalMemory.hpp>
+#include <nupic/experimental/ApicalTiebreakTemporalMemory.hpp>
 #include <nupic/utils/GroupBy.hpp>
 
 using namespace std;
@@ -54,7 +54,7 @@ using namespace nupic::algorithms::connections;
 using namespace nupic::experimental::apical_tiebreak_temporal_memory;
 
 static const Permanence EPSILON = 0.000001;
-static const UInt EXTENDED_TM_VERSION = 1;
+static const UInt TM_VERSION = 1;
 static const UInt32 MIN_PREDICTIVE_THRESHOLD = 2;
 
 
@@ -1708,7 +1708,7 @@ void ApicalTiebreakTemporalMemory::printParameters()
 {
   std::cout << "------------CPP ApicalTiebreakTemporalMemory Parameters ------------------\n";
   std::cout
-    << "version                   = " << EXTENDED_TM_VERSION << std::endl
+    << "version                   = " << TM_VERSION << std::endl
     << "numColumns                = " << numberOfColumns() << std::endl
     << "cellsPerColumn            = " << getCellsPerColumn() << std::endl
     << "activationThreshold       = " << getActivationThreshold() << std::endl

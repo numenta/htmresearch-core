@@ -32,7 +32,7 @@
 #include <nupic/types/Types.hpp>
 #include <nupic/utils/Random.hpp>
 #include <nupic/algorithms/Connections.hpp>
-#include <nupic/proto/ExtendedTemporalMemoryProto.capnp.h>
+#include <nupic/proto/ApicalTiebreakTemporalMemoryProto.capnp.h>
 
 namespace nupic {
   namespace experimental {

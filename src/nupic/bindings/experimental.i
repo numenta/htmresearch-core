@@ -33,7 +33,7 @@ try:
 except ImportError:
   capnp = None
 else:
-  from htmresearch_core.proto.ExtendedTemporalMemoryProto_capnp import (
+  from htmresearch_core.proto.ApicalTiebreakTemporalMemoryProto_capnp import (
     ApicalTiebreakTemporalMemoryProto, ApicalTiebreakSequenceMemoryProto)
 
 
@@ -70,9 +70,9 @@ _EXPERIMENTAL = _experimental
 #include <fstream>
 #include <vector>
 
-#include <nupic/experimental/ExtendedTemporalMemory.hpp>
+#include <nupic/experimental/ApicalTiebreakTemporalMemory.hpp>
 
-#include <nupic/proto/ExtendedTemporalMemoryProto.capnp.h>
+#include <nupic/proto/ApicalTiebreakTemporalMemoryProto.capnp.h>
 
 #include <nupic/py_support/NumpyVector.hpp>
 #include <nupic/py_support/PyCapnp.hpp>
@@ -632,4 +632,4 @@ using namespace nupic;
 %ignore nupic::experimental::apical_tiebreak_temporal_memory::ApicalTiebreakTemporalMemory::getWinnerCells;
 %ignore nupic::experimental::apical_tiebreak_temporal_memory::ApicalTiebreakTemporalMemory::cellsForColumn;
 
-%include <nupic/experimental/ExtendedTemporalMemory.hpp>
+%include <nupic/experimental/ApicalTiebreakTemporalMemory.hpp>

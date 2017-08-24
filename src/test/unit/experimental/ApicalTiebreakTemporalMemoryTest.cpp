@@ -31,7 +31,7 @@
 #include <nupic/types/Types.hpp>
 #include <nupic/utils/Log.hpp>
 
-#include <nupic/experimental/ExtendedTemporalMemory.hpp>
+#include <nupic/experimental/ApicalTiebreakTemporalMemory.hpp>
 #include "gtest/gtest.h"
 
 using namespace nupic;
