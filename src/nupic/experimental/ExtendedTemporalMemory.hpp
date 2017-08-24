@@ -21,11 +21,11 @@
  */
 
 /** @file
- * Definitions for the Extended Temporal Memory in C++
+ * Declarations for the ApicalTiebreakTemporalMemory
  */
 
-#ifndef NTA_EXTENDED_TEMPORAL_MEMORY_HPP
-#define NTA_EXTENDED_TEMPORAL_MEMORY_HPP
+#ifndef NTA_APICAL_TIEBREAK_TM_HPP
+#define NTA_APICAL_TIEBREAK_TM_HPP
 
 #include <vector>
 #include <nupic/types/Serializable.hpp>
@@ -36,37 +36,37 @@
 
 namespace nupic {
   namespace experimental {
-    namespace extended_temporal_memory {
+    namespace apical_tiebreak_temporal_memory {
 
       using namespace algorithms::connections;
 
-      struct PredictionData {
-        std::vector<CellIdx> predictedCells;
-        std::vector<Segment> activeBasalSegments;
-        std::vector<Segment> activeApicalSegments;
-        std::vector<Segment> matchingBasalSegments;
-        std::vector<Segment> matchingApicalSegments;
-        std::vector<UInt> basalOverlaps;
-        std::vector<UInt> apicalOverlaps;
-        std::vector<UInt> basalPotentialOverlaps;
-        std::vector<UInt> apicalPotentialOverlaps;
-      };
-
       /**
-       * A fast Temporal Memory implementation with apical dendrites and
-       * customizable basal input.
+       * A fast generalized Temporal Memory implementation with apical dendrites
+       * that add a "tiebreak".
        *
-       * The public API uses C arrays, not std::vectors, as inputs. C arrays are
-       * a good lowest common denominator. You can get a C array from a vector,
-       * but you can't get a vector from a C array without copying it. This is
-       * important, for example, when using numpy arrays. The only way to
-       * convert a numpy array into a std::vector is to copy it, but you can
-       * access a numpy array's internal C array directly.
+       * Basal connections are used to implement traditional Temporal Memory.
+       *
+       * The apical connections are used for further disambiguation. If multiple
+       * cells in a minicolumn have active basal segments, each of those cells
+       * is predicted, unless one of them also has an active apical segment, in
+       * which case only the cells with active basal and apical segments are
+       * predicted.
+       *
+       * In other words, the apical connections have no effect unless the basal
+       * input is a union of SDRs (e.g. from bursting minicolumns).
+       *
+       * This class is generalized in two ways:
+       *
+       * - This class does not specify when a 'timestep' begins and ends. It
+       *   exposes two main methods: 'depolarizeCells' and 'activateCells', and
+       *   callers or subclasses can introduce the notion of a timestep.
+       * - This class is unaware of whether its 'basalInput' or 'apicalInput'
+       *   are from internal or external cells. They are just cell numbers. The
+       *   caller knows what these cell numbers mean, but this class doesn't.
        */
-      class ExtendedTemporalMemory :
-        public Serializable<ExtendedTemporalMemoryProto> {
+      class ApicalTiebreakTemporalMemory {
       public:
-        ExtendedTemporalMemory();
+        ApicalTiebreakTemporalMemory();
 
         /**
          * Initialize the temporal memory (TM) using the given parameters.
@@ -110,7 +110,11 @@ namespace nupic {
          * Amount by which permanences of synapses are decremented during
          * learning.
          *
-         * @param predictedSegmentDecrement
+         * @param basalPredictedSegmentDecrement
+         * Amount by which active permanences of synapses of previously
+         * predicted but inactive segments are decremented.
+         *
+         * @param apicalPredictedSegmentDecrement
          * Amount by which active permanences of synapses of previously
          * predicted but inactive segments are decremented.
          *
@@ -130,7 +134,7 @@ namespace nupic {
          * sparsity is 2% and permanenceIncrement is 0.01, this parameter should be
          * something like 4% * 0.01 = 0.0004).
          */
-        ExtendedTemporalMemory(
+        ApicalTiebreakTemporalMemory(
           UInt columnCount,
           UInt basalInputSize,
           UInt apicalInputSize,
@@ -142,183 +146,33 @@ namespace nupic {
           UInt sampleSize = 20,
           Permanence permanenceIncrement = 0.10,
           Permanence permanenceDecrement = 0.10,
-          Permanence predictedSegmentDecrement = 0.0,
+          Permanence basalPredictedSegmentDecrement = 0.0,
+          Permanence apicalPredictedSegmentDecrement = 0.0,
           bool learnOnOneCell = false,
           Int seed = 42,
           UInt maxSegmentsPerCell=255,
           UInt maxSynapsesPerSegment=255,
           bool checkInputs = true);
 
-        virtual void initialize(
-          UInt columnCount,
-          UInt basalInputSize,
-          UInt apicalInputSize,
-          UInt cellsPerColumn = 32,
-          UInt activationThreshold = 13,
-          Permanence initialPermanence = 0.21,
-          Permanence connectedPermanence = 0.50,
-          UInt minThreshold = 10,
-          UInt sampleSize = 20,
-          Permanence permanenceIncrement = 0.10,
-          Permanence permanenceDecrement = 0.10,
-          Permanence predictedSegmentDecrement = 0.0,
-          bool learnOnOneCell = false,
-          Int seed = 42,
-          UInt maxSegmentsPerCell=255,
-          UInt maxSynapsesPerSegment=255,
-          bool checkInputs = true);
-
-        virtual ~ExtendedTemporalMemory();
+        virtual ~ApicalTiebreakTemporalMemory();
 
         //----------------------------------------------------------------------
         //  Main functions
         //----------------------------------------------------------------------
 
         /**
-         * Get the version number of for the TM implementation.
+         * Reinitialize the random number generator.
          *
          * @returns Integer version number.
          */
-        virtual UInt version() const;
+        void seed(UInt64 seed);
 
         /**
-         * This *only* updates _rng to a new Random using seed.
-         *
-         * @returns Integer version number.
-         */
-        void seed_(UInt64 seed);
-
-        /**
-         * Indicates the start of a new sequence.
-         * Resets sequence state of the TM.
+         * Clear all active / predicted cells and segments. With
+         * 'learnOnOneCell', this also causes the TM to choose a different set
+         * of cells to learn on in.
          */
         virtual void reset();
-
-        /**
-         * Perform one time step of the Temporal Memory algorithm. Use the
-         * inputs to calculate a set of predicted cells, then calculate the set
-         * of active cells.
-         *
-         * @param activeColumns
-         * Sorted list of indices of active columns.
-         *
-         * @param basalInput
-         * Sorted list of active input bits for the basal dendrite segments.
-         *
-         * @param apicalInput
-         * Sorted list of active input bits for the apical dendrite segments.
-         *
-         * @param basalGrowthCandidates
-         * List of bits that the active cells may grow new basal synapses to.
-         * In traditional TemporalMemory, this would be the prevWinnerCells.
-         *
-         * @param apicalGrowthCandidates
-         * List of bits that the active cells may grow new apical synapses to.
-         *
-         * @param learn
-         * Whether or not learning is enabled.
-         */
-        void compute(
-          const UInt* activeColumnsBegin,
-          const UInt* activeColumnsEnd,
-          const CellIdx* basalInputBegin,
-          const CellIdx* basalInputEnd,
-          const CellIdx* apicalInputBegin,
-          const CellIdx* apicalInputEnd,
-          const CellIdx* basalGrowthCandidatesBegin,
-          const CellIdx* basalGrowthCandidatesEnd,
-          const CellIdx* apicalGrowthCandidatesBegin,
-          const CellIdx* apicalGrowthCandidatesEnd,
-          bool learn = true);
-
-        /**
-         * Perform one time step of the Temporal Memory algorithm. Use the
-         * inputs to calculate a set of predicted cells, then calculate the set
-         * of active cells.
-         *
-         * @param activeColumns
-         * Sorted list of indices of active columns.
-         *
-         * @param basalInput
-         * Sorted list of active input bits for the basal dendrite segments.
-         *
-         * @param apicalInput
-         * Sorted list of active input bits for the apical dendrite segments.
-         *
-         * @param basalGrowthCandidates
-         * List of bits that the active cells may grow new basal synapses to.
-         * In traditional TemporalMemory, this would be the prevWinnerCells.
-         *
-         * @param apicalGrowthCandidates
-         * List of bits that the active cells may grow new apical synapses to.
-         *
-         * @param learn
-         * Whether or not learning is enabled.
-         */
-        void compute(
-          const std::vector<UInt>& activeColumns,
-          const std::vector<CellIdx>& basalInput,
-          const std::vector<CellIdx>& apicalInput,
-          const std::vector<CellIdx>& basalGrowthCandidates,
-          const std::vector<CellIdx>& apicalGrowthCandidates,
-          bool learn = true);
-
-        /**
-         * Equivalent to:
-         *
-         *  etm.compute(activeColumns,
-         *              etm.getActiveCells(),
-         *              apicalInput,
-         *              etm.getWinnerCells(),
-         *              apicalGrowthCandidates);
-         *
-         * @param activeColumns
-         * Sorted list of indices of active columns.
-         *
-         * @param apicalInput
-         * Sorted list of active input bits for the apical dendrite segments.
-         *
-         * @param apicalGrowthCandidates
-         * List of bits that the active cells may grow new apical synapses to.
-         *
-         * @param learn
-         * Whether or not learning is enabled.
-         */
-        void sequenceMemoryCompute(
-          const UInt* activeColumnsBegin,
-          const UInt* activeColumnsEnd,
-          const CellIdx* apicalInputBegin = nullptr,
-          const CellIdx* apicalInputEnd = nullptr,
-          const CellIdx* apicalGrowthCandidatesBegin = nullptr,
-          const CellIdx* apicalGrowthCandidatesEnd = nullptr,
-          bool learn = true);
-
-        /**
-         * Equivalent to:
-         *
-         *  etm.compute(activeColumns,
-         *              etm.getActiveCells(),
-         *              apicalInput,
-         *              etm.getWinnerCells(),
-         *              apicalGrowthCandidates);
-         *
-         * @param activeColumns
-         * Sorted list of indices of active columns.
-         *
-         * @param apicalInput
-         * Sorted list of active input bits for the apical dendrite segments.
-         *
-         * @param apicalGrowthCandidates
-         * List of bits that the active cells may grow new apical synapses to.
-         *
-         * @param learn
-         * Whether or not learning is enabled.
-         */
-        void sequenceMemoryCompute(
-          const std::vector<UInt>& activeColumns,
-          const std::vector<CellIdx>& apicalInput = {},
-          const std::vector<CellIdx>& apicalGrowthCandidates = {},
-          bool learn = true);
 
         // ==============================
         //  Helper functions
@@ -369,40 +223,6 @@ namespace nupic {
         UInt numberOfCells() const;
 
         /**
-         * Calculate the cells that would be predicted by the given basal and
-         * apical input.
-         *
-         * @param basalInput
-         * Sorted list of active input bits for the basal dendrite segments.
-         *
-         * @param apicalInput
-         * Sorted list of active input bits for the apical dendrite segments.
-         *
-         * @returns
-         * Cells/segments that would be predicted.
-         */
-        PredictionData getPredictionsForInput(
-          const CellIdx* basalInputBegin,
-          const CellIdx* basalInputEnd,
-          const CellIdx* apicalInputBegin,
-          const CellIdx* apicalInputEnd) const;
-
-        /**
-         * Equivalent to:
-         *
-         *  etm.getPredictionsForInput(etm.getActiveCells(), apicalInput)
-         *
-         * @param apicalInput
-         * Sorted list of active input bits for the apical dendrite segments.
-         *
-         * @returns
-         * Cells/segments that would be predicted by the current active cells.
-         */
-        PredictionData getSequenceMemoryPredictions(
-          const CellIdx* apicalInputBegin,
-          const CellIdx* apicalInputEnd) const;
-
-        /**
         * Returns the indices of the active cells.
         *
         * @returns Vector of indices of active cells.
@@ -410,16 +230,16 @@ namespace nupic {
         std::vector<CellIdx> getActiveCells() const;
 
         /**
-        * Returns the indices of the cells that were predicted.
-        *
-        * @returns Indices of predicted cells.
-        */
-        std::vector<CellIdx> getPredictedCells() const;
+         * Returns the indices of the cells that were predicted.
+         *
+         * @returns Indices of predicted cells.
+         */
+        virtual std::vector<CellIdx> getPredictedCells() const;
 
         /**
          * Returns the indices of the active cells that were predicted.
          *
-        * @returns Indices of predicted active cells.
+         * @returns Indices of predicted active cells.
          */
         std::vector<CellIdx> getPredictedActiveCells() const;
 
@@ -525,8 +345,10 @@ namespace nupic {
          *
          * @returns Returns the segment decrement
          */
-        Permanence getPredictedSegmentDecrement() const;
-        void setPredictedSegmentDecrement(Permanence);
+        Permanence getBasalPredictedSegmentDecrement() const;
+        void setBasalPredictedSegmentDecrement(Permanence);
+        Permanence getApicalPredictedSegmentDecrement() const;
+        void setApicalPredictedSegmentDecrement(Permanence);
 
         /**
          * Returns the maxSegmentsPerCell.
@@ -557,15 +379,11 @@ namespace nupic {
          */
         bool _validateCell(CellIdx cell);
 
-        using Serializable::write;
-        virtual void write(
-          ExtendedTemporalMemoryProto::Builder& proto) const override;
+        void write(ApicalTiebreakTemporalMemoryProto::Builder& proto) const;
+        void read(ApicalTiebreakTemporalMemoryProto::Reader& proto);
 
-        using Serializable::read;
-        virtual void read(ExtendedTemporalMemoryProto::Reader& proto) override;
-
-        bool operator==(const ExtendedTemporalMemory& other);
-        bool operator!=(const ExtendedTemporalMemory& other);
+        bool operator==(const ApicalTiebreakTemporalMemory& other);
+        bool operator!=(const ApicalTiebreakTemporalMemory& other);
 
         //----------------------------------------------------------------------
         // Debugging helpers
@@ -585,8 +403,6 @@ namespace nupic {
          */
         UInt columnForCell(CellIdx cell);
 
-      protected:
-
         /**
          * Calculate the active cells, using the current active columns and
          * dendrite segments. Grow and reinforce synapses.
@@ -597,50 +413,38 @@ namespace nupic {
          * @param activeColumns
          * A sorted list of active column indices.
          *
-         * @param reinforceCandidatesExternalBasalSize
-         * Size of reinforceCandidatesExternalBasal.
-         *
-         * @param reinforceCandidatesExternalBasal
-         * Sorted list of external cells. Any learning basal dendrite segments
-         * will use this list to decide which synapses to reinforce and which
-         * synapses to punish. Typically this list should be the
-         * 'activeCellsExternalBasal' from the prevous time step.
-         *
-         * @param reinforceCandidatesExternalApical
-         * Size of reinforceCandidatesExternalApical.
-         *
-         * @param reinforceCandidatesExternalApical
-         * Sorted list of external cells. Any learning apical dendrite segments will use
+         * @param basalReinforceCandidates
+         * Sorted list of inputs. Any learning basal dendrite segments will use
          * this list to decide which synapses to reinforce and which synapses to
-         * punish. Typically this list should be the 'activeCellsExternalApical' from
-         * the prevous time step.
+         * punish. Typically this list should be the 'basalInput' from the
+         * prevous time step.
          *
-         * @param growthCandidatesExternalBasal
-         * Size of growthCandidatesExternalBasal.
+         * @param apicalReinforceCandidates
+         * Sorted list of inputs. Any learning apical dendrite segments will use
+         * this list to decide which synapses to reinforce and which synapses to
+         * punish. Typically this list should be the 'apicalInput' from the
+         * prevous time step.
          *
-         * @param growthCandidatesExternalBasal
-         * Sorted list of external cells. Any learning basal dendrite segments can grow
-         * synapses to cells in this list. Typically this list should be a subset of
-         * the 'activeCellsExternalBasal' from the previous 'activateDendrites'.
+         * @param basalGrowthCandidates
+         * Sorted list of inputs. Any learning basal dendrite segments can grow
+         * synapses to cells in this list. Typically this list should be a
+         * subset of the 'basalInput' from the previous 'depolarizeCells'.
          *
-         * @param growthCandidatesExternalApical
-         * Size of growthCandidatesExternalApical.
-         *
-         * @param growthCandidatesExternalApical
-         * Sorted list of external cells. Any learning apical dendrite segments can grow
-         * synapses to cells in this list. Typically this list should be a subset of
-         * the 'activeCellsExternalApical' from the previous 'activateDendrites'.
+         * @param apicalGrowthCandidates
+         * Sorted list of inputs. Any learning apical dendrite segments can grow
+         * synapses to cells in this list. Typically this list should be a
+         * subset of the 'apicalInput' from the previous 'depolarizeCells'.
          *
          * @param learn
          * If true, reinforce / punish / grow synapses.
          */
-        void activateCells_(
+        void activateCells(
           const UInt* activeColumnsBegin,
           const UInt* activeColumnsEnd,
-          const CellIdx* basalInputBegin,
-          const CellIdx* basalInputEnd,
-          const CellIdx* apicalInputBegin,
-          const CellIdx* apicalInputEnd,
+          const CellIdx* basalReinforceCandidatesBegin,
+          const CellIdx* basalReinforceCandidatesEnd,
+          const CellIdx* apicalReinforceCandidatesBegin,
+          const CellIdx* apicalReinforceCandidatesEnd,
           const CellIdx* basalGrowthCandidatesBegin,
           const CellIdx* basalGrowthCandidatesEnd,
           const CellIdx* apicalGrowthCandidatesBegin,
@@ -650,23 +454,17 @@ namespace nupic {
         /**
          * Calculate dendrite segment activity, using the current active cells.
          *
-         * @param activeCellsExternalBasalSize
-         * Size of activeCellsExternalBasal.
+         * @param basalInput
+         * Sorted list of active inputs for activating basal dendrites.
          *
-         * @param activeCellsExternalBasal
-         * Sorted list of active external cells for activating basal dendrites.
-         *
-         * @param activeCellsExternalApicalSize
-         * Size of activeCellsExternalApical.
-         *
-         * @param activeCellsExternalApical
-         * Sorted list of active external cells for activating apical dendrites.
+         * @param apicalInput
+         * Sorted list of active inputs for activating apical dendrites.
          *
          * @param learn
          * If true, segment activations will be recorded. This information is
          * used during segment cleanup.
          */
-        void depolarizeCells_(
+        void depolarizeCells(
           const CellIdx* basalInputBegin,
           const CellIdx* basalInputEnd,
           const CellIdx* apicalInputBegin,
@@ -687,7 +485,8 @@ namespace nupic {
         Permanence connectedPermanence_;
         Permanence permanenceIncrement_;
         Permanence permanenceDecrement_;
-        Permanence predictedSegmentDecrement_;
+        Permanence basalPredictedSegmentDecrement_;
+        Permanence apicalPredictedSegmentDecrement_;
 
         std::vector<CellIdx> activeCells_;
         std::vector<CellIdx> predictedCells_;
@@ -720,8 +519,222 @@ namespace nupic {
         Connections apicalConnections;
       };
 
-    } // end namespace extended_temporal_memory
+      /**
+       * Associates the basal input with the active columns as a "pair".
+       */
+      class ApicalTiebreakPairMemory :
+        public ApicalTiebreakTemporalMemory,
+        public Serializable<ApicalTiebreakTemporalMemoryProto> {
+      public:
+        ApicalTiebreakPairMemory(
+          UInt columnCount,
+          UInt basalInputSize,
+          UInt apicalInputSize,
+          UInt cellsPerColumn = 32,
+          UInt activationThreshold = 13,
+          Permanence initialPermanence = 0.21,
+          Permanence connectedPermanence = 0.50,
+          UInt minThreshold = 10,
+          UInt sampleSize = 20,
+          Permanence permanenceIncrement = 0.10,
+          Permanence permanenceDecrement = 0.10,
+          Permanence basalPredictedSegmentDecrement = 0.0,
+          Permanence apicalPredictedSegmentDecrement = 0.0,
+          bool learnOnOneCell = false,
+          Int seed = 42,
+          UInt maxSegmentsPerCell=255,
+          UInt maxSynapsesPerSegment=255,
+          bool checkInputs = true);
+
+       /**
+         * Perform one timestep. Use the basal and apical input to form a set of
+         * predictions, then activate the specified columns, then learn.
+         *
+         * @param activeColumns
+         * Sorted list of indices of active columns.
+         *
+         * @param basalInput
+         * Sorted list of active input bits for the basal dendrite segments.
+         *
+         * @param apicalInput
+         * Sorted list of active input bits for the apical dendrite segments.
+         *
+         * @param basalGrowthCandidates
+         * List of bits that the active cells may grow new basal synapses to.
+         * In traditional TemporalMemory, this would be the prevWinnerCells.
+         *
+         * @param apicalGrowthCandidates
+         * List of bits that the active cells may grow new apical synapses to.
+         *
+         * @param learn
+         * Whether or not learning is enabled.
+         */
+        void compute(
+          const UInt* activeColumnsBegin,
+          const UInt* activeColumnsEnd,
+          const CellIdx* basalInputBegin,
+          const CellIdx* basalInputEnd,
+          const CellIdx* apicalInputBegin,
+          const CellIdx* apicalInputEnd,
+          const CellIdx* basalGrowthCandidatesBegin,
+          const CellIdx* basalGrowthCandidatesEnd,
+          const CellIdx* apicalGrowthCandidatesBegin,
+          const CellIdx* apicalGrowthCandidatesEnd,
+          bool learn = true);
+
+        /**
+         * Perform one timestep. Use the basal and apical input to form a set of
+         * predictions, then activate the specified columns, then learn.
+         *
+         * @param activeColumns
+         * Sorted list of indices of active columns.
+         *
+         * @param basalInput
+         * Sorted list of active input bits for the basal dendrite segments.
+         *
+         * @param apicalInput
+         * Sorted list of active input bits for the apical dendrite segments.
+         *
+         * @param basalGrowthCandidates
+         * List of bits that the active cells may grow new basal synapses to.
+         * In traditional TemporalMemory, this would be the prevWinnerCells.
+         *
+         * @param apicalGrowthCandidates
+         * List of bits that the active cells may grow new apical synapses to.
+         *
+         * @param learn
+         * Whether or not learning is enabled.
+         */
+        void compute(
+          const std::vector<UInt>& activeColumns,
+          const std::vector<CellIdx>& basalInput,
+          const std::vector<CellIdx>& apicalInput,
+          const std::vector<CellIdx>& basalGrowthCandidates,
+          const std::vector<CellIdx>& apicalGrowthCandidates,
+          bool learn = true);
+
+        using Serializable::write;
+        virtual void write(
+          ApicalTiebreakTemporalMemoryProto::Builder& proto) const override;
+
+        using Serializable::read;
+        virtual void read(ApicalTiebreakTemporalMemoryProto::Reader& proto) override;
+      };
+
+      /**
+       * Traditional TM sequence memory, with apical tiebreak.
+       *
+       * This exposes a 'getNextPredictedCells' method which predicts the next
+       * input.
+       */
+      class ApicalTiebreakSequenceMemory :
+        public ApicalTiebreakTemporalMemory,
+        public Serializable<ApicalTiebreakSequenceMemoryProto> {
+      public:
+        ApicalTiebreakSequenceMemory();
+        ApicalTiebreakSequenceMemory(
+          UInt columnCount,
+          UInt apicalInputSize = 0,
+          UInt cellsPerColumn = 32,
+          UInt activationThreshold = 13,
+          Permanence initialPermanence = 0.21,
+          Permanence connectedPermanence = 0.50,
+          UInt minThreshold = 10,
+          UInt sampleSize = 20,
+          Permanence permanenceIncrement = 0.10,
+          Permanence permanenceDecrement = 0.10,
+          Permanence basalPredictedSegmentDecrement = 0.0,
+          Permanence apicalPredictedSegmentDecrement = 0.0,
+          bool learnOnOneCell = false,
+          Int seed = 42,
+          UInt maxSegmentsPerCell=255,
+          UInt maxSynapsesPerSegment=255,
+          bool checkInputs = true);
+
+        /**
+         * Perform one timestep. Activate the specified columns, using the
+         * predictions from the previous timestep, then learn. Then form a new
+         * set of predictions using the new active cells and the apicalInput.
+         *
+         * @param activeColumns
+         * Sorted list of indices of active columns.
+         *
+         * @param apicalInput
+         * Sorted list of active input bits for the apical dendrite segments.
+         *
+         * @param apicalGrowthCandidates
+         * List of bits that the active cells may grow new apical synapses to.
+         *
+         * @param learn
+         * Whether or not learning is enabled.
+         */
+        void compute(
+          const UInt* activeColumnsBegin,
+          const UInt* activeColumnsEnd,
+          const CellIdx* apicalInputBegin = nullptr,
+          const CellIdx* apicalInputEnd = nullptr,
+          const CellIdx* apicalGrowthCandidatesBegin = nullptr,
+          const CellIdx* apicalGrowthCandidatesEnd = nullptr,
+          bool learn = true);
+
+        /**
+         * Perform one timestep. Activate the specified columns, using the
+         * predictions from the previous timestep, then learn. Then form a new
+         * set of predictions using the new active cells and the apicalInput.
+         *
+         * @param activeColumns
+         * Sorted list of indices of active columns.
+         *
+         * @param apicalInput
+         * Sorted list of active input bits for the apical dendrite segments.
+         *
+         * @param apicalGrowthCandidates
+         * List of bits that the active cells may grow new apical synapses to.
+         *
+         * @param learn
+         * Whether or not learning is enabled.
+         */
+        void compute(
+          const std::vector<UInt>& activeColumns,
+          const std::vector<CellIdx>& apicalInput = {},
+          const std::vector<CellIdx>& apicalGrowthCandidates = {},
+          bool learn = true);
+
+        /**
+         * Returns the indices of the cells that were predicted.
+         *
+         * @returns Indices of predicted cells.
+         */
+        virtual std::vector<CellIdx> getPredictedCells() const override;
+
+        /**
+         * Returns the indices of the cells that are predicted for the next
+         * timestep.
+         *
+         * @returns Indices of predicted cells.
+         */
+        std::vector<CellIdx> getNextPredictedCells() const;
+
+        /**
+         * Indicates the start of a new sequence.
+         */
+        virtual void reset() override;
+
+        using Serializable::write;
+        virtual void write(
+          ApicalTiebreakSequenceMemoryProto::Builder& proto) const override;
+
+        using Serializable::read;
+        virtual void read(ApicalTiebreakSequenceMemoryProto::Reader& proto) override;
+
+      protected:
+        std::vector<CellIdx> prevApicalInput_;
+        std::vector<CellIdx> prevApicalGrowthCandidates_;
+        std::vector<CellIdx> prevPredictedCells_;
+      };
+
+    } // end namespace apical_tiebreak_temporal_memory
   } // end namespace algorithms
 } // end namespace nupic
 
-#endif // NTA_EXTENDED_TEMPORAL_MEMORY_HPP
+#endif // NTA_APICAL_TIEBREAK_TM_HPP

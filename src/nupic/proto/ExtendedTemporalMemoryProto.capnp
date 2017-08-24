@@ -4,8 +4,8 @@
 using import "/nupic/proto/ConnectionsProto.capnp".ConnectionsProto;
 using import "/nupic/proto/RandomProto.capnp".RandomProto;
 
-# Next ID: 32
-struct ExtendedTemporalMemoryProto {
+# Next ID: 34
+struct ApicalTiebreakTemporalMemoryProto {
 
   struct SegmentPath {
     cell @0 :UInt32;
@@ -33,7 +33,8 @@ struct ExtendedTemporalMemoryProto {
   sampleSize @6 :UInt32;
   permanenceIncrement @7 :Float32;
   permanenceDecrement @8 :Float32;
-  predictedSegmentDecrement @9 :Float32;
+  basalPredictedSegmentDecrement @9 :Float32;
+  apicalPredictedSegmentDecrement @33 :Float32;
   maxSegmentsPerCell @10 :UInt16;
   maxSynapsesPerSegment @11 :UInt16;
   formInternalBasalConnections @12 :Bool;
@@ -72,4 +73,13 @@ struct ExtendedTemporalMemoryProto {
     columnIdx @0 :UInt32;
     cellIdx @1 :UInt32;
   }
+}
+
+# Next ID: 4
+struct ApicalTiebreakSequenceMemoryProto {
+  apicalTiebreakTemporalMemory @0 :ApicalTiebreakTemporalMemoryProto;
+
+  prevApicalInput @1 :List(UInt32);
+  prevApicalGrowthCandidates @2 :List(UInt32);
+  prevPredictedCells @3 :List(UInt32);
 }

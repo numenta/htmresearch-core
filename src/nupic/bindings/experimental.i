@@ -28,13 +28,13 @@ import os
 
 try:
   # NOTE need to import capnp first to activate the magic necessary for
-  # ExtendedTemporalMemoryProto_capnp, etc.
+  # ApicalTiebreakTemporalMemoryProto_capnp, etc.
   import capnp
 except ImportError:
   capnp = None
 else:
-  from htmresearch_core.proto.ExtendedTemporalMemoryProto_capnp import \
-       ExtendedTemporalMemoryProto
+  from htmresearch_core.proto.ExtendedTemporalMemoryProto_capnp import (
+    ApicalTiebreakTemporalMemoryProto, ApicalTiebreakSequenceMemoryProto)
 
 
 _EXPERIMENTAL = _experimental
@@ -86,7 +86,7 @@ _EXPERIMENTAL = _experimental
 # define SWIGPY_SLICE_ARG(obj) ((PySliceObject*) (obj))
 #endif
 
-using namespace nupic::experimental::extended_temporal_memory;
+using namespace nupic::experimental::apical_tiebreak_temporal_memory;
 using namespace nupic;
 
 %}
@@ -128,48 +128,69 @@ using namespace nupic;
 %naturalvar;
 
 //--------------------------------------------------------------------------------
-// Extended Temporal Memory
+// Apical Tiebreak Temporal Memory
 //--------------------------------------------------------------------------------
 %pythoncode %{
   import numpy
 
   # Without this, Python scripts that haven't imported nupic.bindings.algorithms
   # will get a SwigPyObject rather than a SWIG-wrapped Connections instance
-  # when accessing the ExtendedTemporalMemory's connections.
+  # when accessing the ApicalTiebreakTemporalMemory's connections.
   import nupic.bindings.algorithms
 
 %}
 
-%inline {
-  PyObject* dictFromPredictionData(
-    const nupic::experimental::extended_temporal_memory::PredictionData& pd)
+%extend nupic::experimental::apical_tiebreak_temporal_memory::ApicalTiebreakTemporalMemory
+{
+  inline PyObject* getActiveCells()
   {
-    PyObject* d = PyDict_New();
-    PyDict_SetItem(d, PyString_FromString("predictedCells"),
-                   nupic::NumpyVectorT<CellIdx>(pd.predictedCells.size(),
-                                                pd.predictedCells.data())
-                   .forPython());
-    PyDict_SetItem(d, PyString_FromString("activeBasalSegments"),
-                   nupic::NumpyVectorT<Segment>(pd.activeBasalSegments.size(),
-                                                pd.activeBasalSegments.data())
-                   .forPython());
-    PyDict_SetItem(d, PyString_FromString("activeApicalSegments"),
-                   nupic::NumpyVectorT<Segment>(pd.activeApicalSegments.size(),
-                                                pd.activeApicalSegments.data())
-                   .forPython());
-    PyDict_SetItem(d, PyString_FromString("matchingBasalSegments"),
-                   nupic::NumpyVectorT<Segment>(pd.matchingBasalSegments.size(),
-                                                pd.matchingBasalSegments.data())
-                   .forPython());
-    PyDict_SetItem(d, PyString_FromString("matchingApicalSegments"),
-                   nupic::NumpyVectorT<Segment>(pd.matchingApicalSegments.size(),
-                                                pd.matchingApicalSegments.data())
-                   .forPython());
-    return d;
+    const std::vector<CellIdx> activeCells = self->getActiveCells();
+
+    return nupic::NumpyVectorT<nupic::UInt32>(
+      activeCells.size(), activeCells.data()
+    ).forPython();
+  }
+
+
+  inline PyObject* getPredictedActiveCells()
+  {
+    const std::vector<CellIdx> predictedActiveCells =
+      self->getPredictedActiveCells();
+
+    return nupic::NumpyVectorT<nupic::UInt32>(
+      predictedActiveCells.size(), predictedActiveCells.data()
+    ).forPython();
+  }
+
+  inline PyObject* getPredictedCells()
+  {
+    const std::vector<CellIdx> predictedCells = self->getPredictedCells();
+
+    return nupic::NumpyVectorT<nupic::UInt32>(
+      predictedCells.size(), predictedCells.data()
+    ).forPython();
+  }
+
+  inline PyObject* getWinnerCells()
+  {
+    const std::vector<CellIdx> winnerCells = self->getWinnerCells();
+
+    return nupic::NumpyVectorT<nupic::UInt32>(
+      winnerCells.size(), winnerCells.data()
+    ).forPython();
+  }
+
+  inline PyObject* cellsForColumn(UInt columnIdx)
+  {
+    const std::vector<CellIdx> cellIdxs = self->cellsForColumn(columnIdx);
+
+    return nupic::NumpyVectorT<nupic::UInt32>(
+      cellIdxs.size(), cellIdxs.data()
+    ).forPython();
   }
 }
 
-%extend nupic::experimental::extended_temporal_memory::ExtendedTemporalMemory
+%extend nupic::experimental::apical_tiebreak_temporal_memory::ApicalTiebreakPairMemory
 {
   %pythoncode %{
     def __init__(self,
@@ -184,7 +205,8 @@ using namespace nupic;
                  sampleSize=20,
                  permanenceIncrement=0.10,
                  permanenceDecrement=0.10,
-                 predictedSegmentDecrement=0.00,
+                 basalPredictedSegmentDecrement=0.00,
+                 apicalPredictedSegmentDecrement=0.00,
                  learnOnOneCell=False,
                  maxSegmentsPerCell=255,
                  maxSynapsesPerSegment=255,
@@ -252,12 +274,13 @@ using namespace nupic;
       if basalInputPrepend:
         basalInputSize += columnCount * cellsPerColumn
 
-      self.this = _EXPERIMENTAL.new_ExtendedTemporalMemory(
+      self.this = _EXPERIMENTAL.new_ApicalTiebreakPairMemory(
         columnCount, basalInputSize, apicalInputSize,
         cellsPerColumn, activationThreshold,
         initialPermanence, connectedPermanence,
         minThreshold, sampleSize, permanenceIncrement,
-        permanenceDecrement, predictedSegmentDecrement,
+        permanenceDecrement, basalPredictedSegmentDecrement,
+        apicalPredictedSegmentDecrement,
         learnOnOneCell, seed, maxSegmentsPerCell,
         maxSynapsesPerSegment, checkInputs)
 
@@ -275,7 +298,7 @@ using namespace nupic;
     def __setstate__(self, state):
       # Create an empty C++ temporal memory and populate it from the serialized
       # string.
-      self.this = _EXPERIMENTAL.new_ExtendedTemporalMemory()
+      self.this = _EXPERIMENTAL.new_ApicalTiebreakPairMemory()
       if isinstance(state, str):
         self.loadFromString(state)
         self.valueToCategory = {}
@@ -338,85 +361,6 @@ using namespace nupic;
         learn)
 
 
-    def sequenceMemoryCompute(self,
-                              activeColumns,
-                              apicalInput=(),
-                              apicalGrowthCandidates=None,
-                              learn=True):
-      """
-      Equivalent to:
-
-         etm.compute(activeColumns,
-                     etm.getActiveCells(),
-                     apicalInput,
-                     etm.getWinnerCells(),
-                     apicalGrowthCandidates);
-
-      @param activeColumns (sequence)
-      Sorted list of active columns.
-
-      @param apicalInput (sequence)
-      Sorted list of active input bits for the apical dendrite segments
-
-      @param apicalGrowthCandidates (sequence)
-      List of bits that the active cells may grow new apical synapses to
-      If None, the apicalInput is assumed to be growth candidates.
-
-      @param learn (bool)
-      Whether or not learning is enabled
-      """
-
-      npApical = numpy.asarray(apicalInput, "uint32")
-      npApicalGrowth = (numpy.asarray(apicalGrowthCandidates, "uint32")
-                        if apicalGrowthCandidates is not None
-                        else npApical)
-
-      self.convertedSequenceMemoryCompute(
-        numpy.asarray(activeColumns, "uint32"),
-        npApical, npApicalGrowth, learn)
-
-
-    def getPredictionsForInput(self, basalInput, apicalInput=()):
-      """
-      Calculate the cells that would be predicted by the given basal and
-      apical input.
-
-      @param basalInput (sequence)
-      Sorted list of active input bits for the basal dendrite segments.
-
-      @param apicalInput (sequence)
-      Sorted list of active input bits for the apical dendrite segments.
-
-      @returns (dict)
-      A results dict which contains keys: predictedCells, activeBasalSegments,
-      activeApicalSegments.
-      """
-      return self.convertedGetPredictionsForInput(
-        numpy.asarray(basalInput, "uint32"),
-        numpy.asarray(apicalInput, "uint32"))
-
-
-    def getSequenceMemoryPredictions(self, apicalInput=()):
-      """
-      Equivalent to:
-
-       etm.getPredictionsForInput(etm.getActiveCells(), apicalInput)
-
-      @param apicalInput (sequence)
-      Sorted list of active input bits for the apical dendrite segments.
-
-      @returns (dict)
-      A results dict which contains keys: predictedCells, activeBasalSegments,
-      activeApicalSegments.
-      """
-      return self.convertedGetSequenceMemoryPredictions(
-        numpy.asarray(apicalInput, "uint32"))
-
-
-    def reset(self):
-      _EXPERIMENTAL.ExtendedTemporalMemory_reset(self)
-
-
     @classmethod
     def read(cls, proto):
       instance = cls()
@@ -424,21 +368,21 @@ using namespace nupic;
       return instance
 
     def write(self, pyBuilder):
-      """Serialize the ExtendedTemporalMemory instance using capnp.
+      """Serialize the ApicalTiebreakTemporalMemory instance using capnp.
 
-      :param: Destination ExtendedTemporalMemoryProto message builder
+      :param: Destination ApicalTiebreakTemporalMemoryProto message builder
       """
-      reader = ExtendedTemporalMemoryProto.from_bytes(
+      reader = ApicalTiebreakTemporalMemoryProto.from_bytes(
         self._writeAsCapnpPyBytes()) # copy
       pyBuilder.from_dict(reader.to_dict())  # copy
 
 
     def convertedRead(self, proto):
-      """Initialize the ExtendedTemporalMemory instance from the given
-      ExtendedTemporalMemoryProto reader.
+      """Initialize the ApicalTiebreakTemporalMemory instance from the given
+      ApicalTiebreakTemporalMemoryProto reader.
 
-      :param proto: ExtendedTemporalMemoryProto message reader containing data
-                    from a previously serialized ExtendedTemporalMemory
+      :param proto: ApicalTiebreakTemporalMemoryProto message reader containing data
+                    from a previously serialized ApicalTiebreakTemporalMemory
                     instance.
 
       """
@@ -453,52 +397,6 @@ using namespace nupic;
   inline void _initFromCapnpPyBytes(PyObject* pyBytes)
   {
     nupic::PyCapnpHelper::initFromPyBytes(*self, pyBytes);
-  }
-
-  inline PyObject* getActiveCells()
-  {
-    const std::vector<CellIdx> activeCells = self->getActiveCells();
-
-    return nupic::NumpyVectorT<nupic::UInt32>(
-      activeCells.size(), activeCells.data()
-    ).forPython();
-  }
-
-  inline PyObject* getPredictedActiveCells()
-  {
-    const std::vector<CellIdx> predictedActiveCells =
-      self->getPredictedActiveCells();
-
-    return nupic::NumpyVectorT<nupic::UInt32>(
-      predictedActiveCells.size(), predictedActiveCells.data()
-    ).forPython();
-  }
-
-  inline PyObject* getPredictedCells()
-  {
-    const std::vector<CellIdx> predictedCells = self->getPredictedCells();
-
-    return nupic::NumpyVectorT<nupic::UInt32>(
-      predictedCells.size(), predictedCells.data()
-    ).forPython();
-  }
-
-  inline PyObject* getWinnerCells()
-  {
-    const std::vector<CellIdx> winnerCells = self->getWinnerCells();
-
-    return nupic::NumpyVectorT<nupic::UInt32>(
-      winnerCells.size(), winnerCells.data()
-    ).forPython();
-  }
-
-  inline PyObject* cellsForColumn(UInt columnIdx)
-  {
-    const std::vector<CellIdx> cellIdxs = self->cellsForColumn(columnIdx);
-
-    return nupic::NumpyVectorT<nupic::UInt32>(
-      cellIdxs.size(), cellIdxs.data()
-    ).forPython();
   }
 
   inline void convertedCompute(
@@ -526,8 +424,190 @@ using namespace nupic;
                   apicalGrowthCandidates.end(),
                   learn);
   }
+}
 
-  inline void convertedSequenceMemoryCompute(
+%extend nupic::experimental::apical_tiebreak_temporal_memory::ApicalTiebreakSequenceMemory
+{
+  %pythoncode %{
+    def __init__(self,
+                 columnCount=2048,
+                 apicalInputSize=0,
+                 cellsPerColumn=32,
+                 activationThreshold=13,
+                 initialPermanence=0.21,
+                 connectedPermanence=0.50,
+                 minThreshold=10,
+                 sampleSize=20,
+                 permanenceIncrement=0.10,
+                 permanenceDecrement=0.10,
+                 basalPredictedSegmentDecrement=0.00,
+                 apicalPredictedSegmentDecrement=0.00,
+                 learnOnOneCell=False,
+                 maxSegmentsPerCell=255,
+                 maxSynapsesPerSegment=255,
+                 seed=42,
+                 checkInputs=True,
+                 basalInputPrepend=False):
+      """
+      @param columnCount (int)
+      The number of minicolumns
+
+      @param apicalInputSize (int)
+      The number of bits in the apical input
+
+      @param cellsPerColumn (int)
+      Number of cells per column
+
+      @param activationThreshold (int)
+      If the number of active connected synapses on a segment is at least this
+      threshold, the segment is said to be active.
+
+      @param initialPermanence (float)
+      Initial permanence of a new synapse
+
+      @param connectedPermanence (float)
+      If the permanence value for a synapse is greater than this value, it is said
+      to be connected.
+
+      @param minThreshold (int)
+      If the number of potential synapses active on a segment is at least this
+      threshold, it is said to be "matching" and is eligible for learning.
+
+      @param sampleSize (int)
+      How much of the active SDR to sample with synapses.
+
+      @param permanenceIncrement (float)
+      Amount by which permanences of synapses are incremented during learning.
+
+      @param permanenceDecrement (float)
+      Amount by which permanences of synapses are decremented during learning.
+
+      @param predictedSegmentDecrement (float)
+      Amount by which basal segments are punished for incorrect predictions.
+
+      @param learnOnOneCell (bool)
+      Whether to always choose the same cell when bursting a column until the
+      next reset occurs.
+
+      @param maxSegmentsPerCell (int)
+      The maximum number of segments per cell.
+
+      @param maxSynapsesPerSegment (int)
+      The maximum number of synapses per segment.
+
+      @param seed (int)
+      Seed for the random number generator.
+
+      @param basalInputPrepend (bool)
+      If true, this TM will automatically insert its activeCells and winnerCells
+      into the basalInput and basalGrowthCandidates, respectively.
+      """
+
+      self.this = _EXPERIMENTAL.new_ApicalTiebreakSequenceMemory(
+        columnCount, apicalInputSize,
+        cellsPerColumn, activationThreshold,
+        initialPermanence, connectedPermanence,
+        minThreshold, sampleSize, permanenceIncrement,
+        permanenceDecrement, basalPredictedSegmentDecrement,
+        apicalPredictedSegmentDecrement,
+        learnOnOneCell, seed, maxSegmentsPerCell,
+        maxSynapsesPerSegment, checkInputs)
+
+
+    def __getstate__(self):
+      # Save the local attributes but override the C++ temporal memory with the
+      # string representation.
+      d = dict(self.__dict__)
+      d["this"] = self.getCState()
+      return d
+
+
+    def __setstate__(self, state):
+      # Create an empty C++ temporal memory and populate it from the serialized
+      # string.
+      self.this = _EXPERIMENTAL.new_ApicalTiebreakSequenceMemory()
+      if isinstance(state, str):
+        self.loadFromString(state)
+        self.valueToCategory = {}
+      else:
+        self.loadFromString(state["this"])
+        # Use the rest of the state to set local Python attributes.
+        del state["this"]
+        self.__dict__.update(state)
+
+
+    def compute(self,
+                activeColumns,
+                apicalInput=(),
+                apicalGrowthCandidates=None,
+                learn=True):
+      """
+      Perform one time step of the Temporal Memory algorithm.
+
+      @param activeColumns (sequence)
+      Sorted list of active columns.
+
+      @param apicalInput (sequence)
+      Sorted list of active input bits for the apical dendrite segments
+
+      @param apicalGrowthCandidates (sequence)
+      List of bits that the active cells may grow new apical synapses to
+      If None, the apicalInput is assumed to be growth candidates.
+
+      @param learn (bool)
+      Whether or not learning is enabled
+      """
+
+      npApical = numpy.asarray(apicalInput, "uint32")
+      npApicalGrowth = (numpy.asarray(apicalGrowthCandidates, "uint32")
+                        if apicalGrowthCandidates is not None
+                        else npApical)
+
+      self.convertedCompute(
+        numpy.asarray(activeColumns, "uint32"),
+        npApical, npApicalGrowth,
+        learn)
+
+
+    @classmethod
+    def read(cls, proto):
+      instance = cls()
+      instance.convertedRead(proto)
+      return instance
+
+    def write(self, pyBuilder):
+      """Serialize the ApicalTiebreakTemporalMemory instance using capnp.
+
+      :param: Destination ApicalTiebreakSequenceMemoryProto message builder
+      """
+      reader = ApicalTiebreakSequenceMemoryProto.from_bytes(
+        self._writeAsCapnpPyBytes()) # copy
+      pyBuilder.from_dict(reader.to_dict())  # copy
+
+
+    def convertedRead(self, proto):
+      """Initialize the ApicalTiebreakTemporalMemory instance from the given
+      ApicalTiebreakSequenceMemoryProto reader.
+
+      :param proto: ApicalTiebreakSequenceMemoryProto message reader containing data
+                    from a previously serialized ApicalTiebreakTemporalMemory
+                    instance.
+
+      """
+      self._initFromCapnpPyBytes(proto.as_builder().to_bytes()) # copy * 2
+  %}
+
+  inline PyObject* _writeAsCapnpPyBytes() const
+  {
+    return nupic::PyCapnpHelper::writeAsPyBytes(*self);
+  }
+
+  inline void _initFromCapnpPyBytes(PyObject* pyBytes)
+  {
+    nupic::PyCapnpHelper::initFromPyBytes(*self, pyBytes);
+  }
+
+  inline void convertedCompute(
     PyObject *py_activeColumns,
     PyObject *py_apicalInput,
     PyObject *py_apicalGrowthCandidates,
@@ -538,41 +618,18 @@ using namespace nupic;
     nupic::NumpyVectorWeakRefT<nupic::UInt>
       apicalGrowthCandidates(py_apicalGrowthCandidates);
 
-    self->sequenceMemoryCompute(activeColumns.begin(), activeColumns.end(),
-                                apicalInput.begin(), apicalInput.end(),
-                                apicalGrowthCandidates.begin(),
-                                apicalGrowthCandidates.end(),
-                                learn);
-  }
-
-  PyObject* convertedGetPredictionsForInput(
-    PyObject *py_basalInput,
-    PyObject *py_apicalInput)
-  {
-    nupic::NumpyVectorWeakRefT<nupic::UInt> basalInput(py_basalInput);
-    nupic::NumpyVectorWeakRefT<nupic::UInt> apicalInput(py_apicalInput);
-
-    return dictFromPredictionData(
-      self->getPredictionsForInput(
-        basalInput.begin(), basalInput.end(),
-        apicalInput.begin(), apicalInput.end()));
-  }
-
-  PyObject* convertedGetSequenceMemoryPredictions(
-    PyObject *py_apicalInput)
-  {
-    nupic::NumpyVectorWeakRefT<nupic::UInt> apicalInput(py_apicalInput);
-
-    return dictFromPredictionData(
-      self->getSequenceMemoryPredictions(
-        apicalInput.begin(), apicalInput.end()));
+    self->compute(activeColumns.begin(), activeColumns.end(),
+                  apicalInput.begin(), apicalInput.end(),
+                  apicalGrowthCandidates.begin(),
+                  apicalGrowthCandidates.end(),
+                  learn);
   }
 }
 
-%ignore nupic::experimental::extended_temporal_memory::ExtendedTemporalMemory::getActiveCells;
-%ignore nupic::experimental::extended_temporal_memory::ExtendedTemporalMemory::getPredictedActiveCells;
-%ignore nupic::experimental::extended_temporal_memory::ExtendedTemporalMemory::getPredictedCells;
-%ignore nupic::experimental::extended_temporal_memory::ExtendedTemporalMemory::getWinnerCells;
-%ignore nupic::experimental::extended_temporal_memory::ExtendedTemporalMemory::cellsForColumn;
+%ignore nupic::experimental::apical_tiebreak_temporal_memory::ApicalTiebreakTemporalMemory::getActiveCells;
+%ignore nupic::experimental::apical_tiebreak_temporal_memory::ApicalTiebreakTemporalMemory::getPredictedActiveCells;
+%ignore nupic::experimental::apical_tiebreak_temporal_memory::ApicalTiebreakTemporalMemory::getPredictedCells;
+%ignore nupic::experimental::apical_tiebreak_temporal_memory::ApicalTiebreakTemporalMemory::getWinnerCells;
+%ignore nupic::experimental::apical_tiebreak_temporal_memory::ApicalTiebreakTemporalMemory::cellsForColumn;
 
 %include <nupic/experimental/ExtendedTemporalMemory.hpp>

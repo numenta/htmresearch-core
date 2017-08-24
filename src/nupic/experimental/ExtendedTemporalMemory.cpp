@@ -21,7 +21,7 @@
  */
 
 /** @file
- * Implementation of ExtendedTemporalMemory
+ * Implementation of ApicalTiebreakTemporalMemory
  *
  * The functions in this file use the following parameter ordering
  * convention:
@@ -51,7 +51,7 @@
 using namespace std;
 using namespace nupic;
 using namespace nupic::algorithms::connections;
-using namespace nupic::experimental::extended_temporal_memory;
+using namespace nupic::experimental::apical_tiebreak_temporal_memory;
 
 static const Permanence EPSILON = 0.000001;
 static const UInt EXTENDED_TM_VERSION = 1;
@@ -59,33 +59,11 @@ static const UInt32 MIN_PREDICTIVE_THRESHOLD = 2;
 
 
 
-template<typename Iterator>
-bool isSortedWithoutDuplicates(Iterator begin, Iterator end)
-{
-  if (std::distance(begin, end) >= 2)
-  {
-    Iterator now = begin;
-    Iterator next = begin + 1;
-    while (next != end)
-    {
-      if (*now >= *next)
-      {
-        return false;
-      }
-
-      now = next++;
-    }
-  }
-
-  return true;
-}
-
-
-ExtendedTemporalMemory::ExtendedTemporalMemory()
+ApicalTiebreakTemporalMemory::ApicalTiebreakTemporalMemory()
 {
 }
 
-ExtendedTemporalMemory::ExtendedTemporalMemory(
+ApicalTiebreakTemporalMemory::ApicalTiebreakTemporalMemory(
   UInt columnCount,
   UInt basalInputSize,
   UInt apicalInputSize,
@@ -97,50 +75,8 @@ ExtendedTemporalMemory::ExtendedTemporalMemory(
   UInt sampleSize,
   Permanence permanenceIncrement,
   Permanence permanenceDecrement,
-  Permanence predictedSegmentDecrement,
-  bool learnOnOneCell,
-  Int seed,
-  UInt maxSegmentsPerCell,
-  UInt maxSynapsesPerSegment,
-  bool checkInputs)
-{
-  initialize(
-    columnCount,
-    basalInputSize,
-    apicalInputSize,
-    cellsPerColumn,
-    activationThreshold,
-    initialPermanence,
-    connectedPermanence,
-    minThreshold,
-    sampleSize,
-    permanenceIncrement,
-    permanenceDecrement,
-    predictedSegmentDecrement,
-    learnOnOneCell,
-    seed,
-    maxSegmentsPerCell,
-    maxSynapsesPerSegment,
-    checkInputs);
-}
-
-ExtendedTemporalMemory::~ExtendedTemporalMemory()
-{
-}
-
-void ExtendedTemporalMemory::initialize(
-  UInt columnCount,
-  UInt basalInputSize,
-  UInt apicalInputSize,
-  UInt cellsPerColumn,
-  UInt activationThreshold,
-  Permanence initialPermanence,
-  Permanence connectedPermanence,
-  UInt minThreshold,
-  UInt sampleSize,
-  Permanence permanenceIncrement,
-  Permanence permanenceDecrement,
-  Permanence predictedSegmentDecrement,
+  Permanence basalPredictedSegmentDecrement,
+  Permanence apicalPredictedSegmentDecrement,
   bool learnOnOneCell,
   Int seed,
   UInt maxSegmentsPerCell,
@@ -168,7 +104,8 @@ void ExtendedTemporalMemory::initialize(
   checkInputs_ = checkInputs;
   permanenceIncrement_ = permanenceIncrement;
   permanenceDecrement_ = permanenceDecrement;
-  predictedSegmentDecrement_ = predictedSegmentDecrement;
+  basalPredictedSegmentDecrement_ = basalPredictedSegmentDecrement;
+  apicalPredictedSegmentDecrement_ = apicalPredictedSegmentDecrement;
   maxSegmentsPerCell_ = maxSegmentsPerCell;
   maxSynapsesPerSegment_ = maxSynapsesPerSegment;
   iteration_ = 0;
@@ -176,16 +113,13 @@ void ExtendedTemporalMemory::initialize(
   basalConnections = Connections(numberOfCells());
   apicalConnections = Connections(numberOfCells());
 
-  seed_((UInt64)(seed < 0 ? rand() : seed));
+  this->seed((UInt64)(seed < 0 ? rand() : seed));
+}
 
-  activeCells_.clear();
-  winnerCells_.clear();
-  predictedActiveCells_.clear();
-  activeBasalSegments_.clear();
-  matchingBasalSegments_.clear();
-  activeApicalSegments_.clear();
-  matchingApicalSegments_.clear();
-  chosenCellForColumn_.clear();
+
+
+ApicalTiebreakTemporalMemory::~ApicalTiebreakTemporalMemory()
+{
 }
 
 static UInt32 predictiveScore(
@@ -812,13 +746,13 @@ static void punishPredictedColumn(
   }
 }
 
-void ExtendedTemporalMemory::activateCells_(
+void ApicalTiebreakTemporalMemory::activateCells(
   const UInt* activeColumnsBegin,
   const UInt* activeColumnsEnd,
-  const CellIdx* basalInputBegin,
-  const CellIdx* basalInputEnd,
-  const CellIdx* apicalInputBegin,
-  const CellIdx* apicalInputEnd,
+  const CellIdx* basalReinforceCandidatesBegin,
+  const CellIdx* basalReinforceCandidatesEnd,
+  const CellIdx* apicalReinforceCandidatesBegin,
+  const CellIdx* apicalReinforceCandidatesEnd,
   const CellIdx* basalGrowthCandidatesBegin,
   const CellIdx* basalGrowthCandidatesEnd,
   const CellIdx* apicalGrowthCandidatesBegin,
@@ -831,15 +765,17 @@ void ExtendedTemporalMemory::activateCells_(
 
   // Perf: Densify these inputs so adaptSegment can quickly check
   // whether a synapse is active.
-  vector<bool> basalInputDense(basalInputSize_, false);
-  for (auto it = basalInputBegin; it != basalInputEnd; it++)
+  vector<bool> basalReinforceCandidatesDense(basalInputSize_, false);
+  for (auto it = basalReinforceCandidatesBegin;
+       it != basalReinforceCandidatesEnd; it++)
   {
-    basalInputDense[*it] = true;
+    basalReinforceCandidatesDense[*it] = true;
   }
-  vector<bool> apicalInputDense(apicalInputSize_, false);
-  for (auto it = apicalInputBegin; it != apicalInputEnd; it++)
+  vector<bool> apicalReinforceCandidatesDense(apicalInputSize_, false);
+  for (auto it = apicalReinforceCandidatesBegin;
+       it != apicalReinforceCandidatesEnd; it++)
   {
-    apicalInputDense[*it] = true;
+    apicalReinforceCandidatesDense[*it] = true;
   }
 
   const auto columnForCellFn = [&](CellIdx cell)
@@ -897,7 +833,7 @@ void ExtendedTemporalMemory::activateCells_(
           columnMatchingBasalBegin, columnMatchingBasalEnd,
           columnActiveApicalBegin, columnActiveApicalEnd,
           columnMatchingApicalBegin, columnMatchingApicalEnd,
-          basalInputDense, apicalInputDense,
+          basalReinforceCandidatesDense, apicalReinforceCandidatesDense,
           basalGrowthCandidatesBegin, basalGrowthCandidatesEnd,
           apicalGrowthCandidatesBegin, apicalGrowthCandidatesEnd,
           basalPotentialOverlaps_,
@@ -919,7 +855,7 @@ void ExtendedTemporalMemory::activateCells_(
           columnMatchingBasalBegin, columnMatchingBasalEnd,
           columnActiveApicalBegin, columnActiveApicalEnd,
           columnMatchingApicalBegin, columnMatchingApicalEnd,
-          basalInputDense, apicalInputDense,
+          basalReinforceCandidatesDense, apicalReinforceCandidatesDense,
           basalGrowthCandidatesBegin, basalGrowthCandidatesEnd,
           apicalGrowthCandidatesBegin, apicalGrowthCandidatesEnd,
           basalPotentialOverlaps_,
@@ -937,10 +873,14 @@ void ExtendedTemporalMemory::activateCells_(
         punishPredictedColumn(
           basalConnections,
           columnMatchingBasalBegin, columnMatchingBasalEnd,
-          basalInputDense,
-          predictedSegmentDecrement_);
+          basalReinforceCandidatesDense,
+          basalPredictedSegmentDecrement_);
 
-        // Don't punish apical segments.
+        punishPredictedColumn(
+          apicalConnections,
+          columnMatchingApicalBegin, columnMatchingApicalEnd,
+          apicalReinforceCandidatesDense,
+          apicalPredictedSegmentDecrement_);
       }
     }
   }
@@ -1076,7 +1016,7 @@ static void calculatePredictedCells(
   }
 }
 
-void ExtendedTemporalMemory::depolarizeCells_(
+void ApicalTiebreakTemporalMemory::depolarizeCells(
   const CellIdx* basalInputBegin,
   const CellIdx* basalInputEnd,
   const CellIdx* apicalInputBegin,
@@ -1116,136 +1056,7 @@ void ExtendedTemporalMemory::depolarizeCells_(
   }
 }
 
-void ExtendedTemporalMemory::compute(
-  const UInt* activeColumnsBegin,
-  const UInt* activeColumnsEnd,
-  const CellIdx* basalInputBegin,
-  const CellIdx* basalInputEnd,
-  const CellIdx* apicalInputBegin,
-  const CellIdx* apicalInputEnd,
-  const CellIdx* basalGrowthCandidatesBegin,
-  const CellIdx* basalGrowthCandidatesEnd,
-  const CellIdx* apicalGrowthCandidatesBegin,
-  const CellIdx* apicalGrowthCandidatesEnd,
-  bool learn)
-{
-  if (checkInputs_)
-  {
-    NTA_CHECK(isSortedWithoutDuplicates(activeColumnsBegin, activeColumnsEnd))
-      << "activeColumns must be sorted without duplicates.";
-    NTA_CHECK(isSortedWithoutDuplicates(basalInputBegin, basalInputEnd))
-      << "basalInput must be sorted without duplicates.";
-    NTA_CHECK(isSortedWithoutDuplicates(apicalInputBegin, apicalInputEnd))
-      << "apicalInput must be sorted without duplicates.";
-    NTA_CHECK(isSortedWithoutDuplicates(basalGrowthCandidatesBegin,
-                                        basalGrowthCandidatesEnd))
-      << "basalGrowthCandidates must be sorted without duplicates.";
-    NTA_CHECK(isSortedWithoutDuplicates(apicalGrowthCandidatesBegin,
-                                        apicalGrowthCandidatesEnd))
-      << "apicalGrowthCandidates must be sorted without duplicates.";
-
-    NTA_CHECK(std::all_of(activeColumnsBegin, activeColumnsEnd,
-                          [&](UInt c) { return c < columnCount_; }))
-      << "Values in activeColumns must be within the range "
-      << "[0," << columnCount_ << ").";
-    NTA_CHECK(std::all_of(basalInputBegin, basalInputEnd,
-                          [&](UInt c) { return c < basalInputSize_; }))
-      << "Values in basalInput must be within the range "
-      << "[0," << basalInputSize_ << ").";
-    NTA_CHECK(std::all_of(apicalInputBegin, apicalInputEnd,
-                          [&](UInt c) { return c < apicalInputSize_; }))
-      << "Values in apicalInput must be within the range "
-      << "[0," << apicalInputSize_ << ").";
-    NTA_CHECK(std::all_of(basalGrowthCandidatesBegin, basalGrowthCandidatesEnd,
-                          [&](UInt c) { return c < basalInputSize_; }))
-      << "Values in basalGrowthCandidates must be within the range " <<
-      "[0," << basalInputSize_ << ").";
-    NTA_CHECK(std::all_of(apicalGrowthCandidatesBegin, apicalGrowthCandidatesEnd,
-                          [&](UInt c) { return c < apicalInputSize_; }))
-      << "Values in apicalGrowthCandidates must be within the range "
-      << "[0," << apicalInputSize_ << ").";
-  }
-
-  depolarizeCells_(basalInputBegin, basalInputEnd,
-                   apicalInputBegin, apicalInputEnd,
-                   learn);
-
-  activateCells_(activeColumnsBegin, activeColumnsEnd,
-                 basalInputBegin, basalInputEnd,
-                 apicalInputBegin, apicalInputEnd,
-                 basalGrowthCandidatesBegin, basalGrowthCandidatesEnd,
-                 apicalGrowthCandidatesBegin, apicalGrowthCandidatesEnd,
-                 learn);
-}
-
-void ExtendedTemporalMemory::compute(
-  const vector<UInt>& activeColumns,
-  const vector<CellIdx>& basalInput,
-  const vector<CellIdx>& apicalInput,
-  const vector<CellIdx>& basalGrowthCandidates,
-  const vector<CellIdx>& apicalGrowthCandidates,
-  bool learn)
-{
-  compute(activeColumns.data(),
-          activeColumns.data() + activeColumns.size(),
-          basalInput.data(), basalInput.data() + basalInput.size(),
-          apicalInput.data(), apicalInput.data() + apicalInput.size(),
-          basalGrowthCandidates.data(),
-          basalGrowthCandidates.data() + basalGrowthCandidates.size(),
-          apicalGrowthCandidates.data(),
-          apicalGrowthCandidates.data() + apicalGrowthCandidates.size(),
-          learn);
-}
-
-void ExtendedTemporalMemory::sequenceMemoryCompute(
-  const UInt* activeColumnsBegin,
-  const UInt* activeColumnsEnd,
-  const CellIdx* apicalInputBegin,
-  const CellIdx* apicalInputEnd,
-  const CellIdx* apicalGrowthCandidatesBegin,
-  const CellIdx* apicalGrowthCandidatesEnd,
-  bool learn)
-{
-  NTA_CHECK(basalInputSize_ == numberOfCells());
-
-  const vector<CellIdx> prevActiveCells(activeCells_);
-  const vector<CellIdx> prevWinnerCells(winnerCells_);
-
-  compute(activeColumnsBegin, activeColumnsEnd,
-          prevActiveCells.data(),
-          prevActiveCells.data() + prevActiveCells.size(),
-          apicalInputBegin, apicalInputEnd,
-          prevWinnerCells.data(),
-          prevWinnerCells.data() + prevWinnerCells.size(),
-          apicalGrowthCandidatesBegin, apicalGrowthCandidatesEnd,
-          learn);
-}
-
-void ExtendedTemporalMemory::sequenceMemoryCompute(
-  const vector<UInt>& activeColumns,
-  const vector<CellIdx>& apicalInput,
-  const vector<CellIdx>& apicalGrowthCandidates,
-  bool learn)
-{
-  NTA_CHECK(basalInputSize_ == numberOfCells());
-
-  const vector<CellIdx> prevActiveCells(activeCells_);
-  const vector<CellIdx> prevWinnerCells(winnerCells_);
-
-  compute(activeColumns.data(),
-          activeColumns.data() + activeColumns.size(),
-          prevActiveCells.data(),
-          prevActiveCells.data() + prevActiveCells.size(),
-          apicalInput.data(),
-          apicalInput.data() + apicalInput.size(),
-          prevWinnerCells.data(),
-          prevWinnerCells.data() + prevWinnerCells.size(),
-          apicalGrowthCandidates.data(),
-          apicalGrowthCandidates.data() + apicalGrowthCandidates.size(),
-          learn);
-}
-
-void ExtendedTemporalMemory::reset(void)
+void ApicalTiebreakTemporalMemory::reset(void)
 {
   activeCells_.clear();
   winnerCells_.clear();
@@ -1262,26 +1073,26 @@ void ExtendedTemporalMemory::reset(void)
 //  Helper methods
 // ==============================
 
-Segment ExtendedTemporalMemory::createBasalSegment(CellIdx cell)
+Segment ApicalTiebreakTemporalMemory::createBasalSegment(CellIdx cell)
 {
   return ::createSegment(basalConnections, lastUsedIterationForBasalSegment_,
                          cell, iteration_, maxSegmentsPerCell_);
 }
 
-Segment ExtendedTemporalMemory::createApicalSegment(CellIdx cell)
+Segment ApicalTiebreakTemporalMemory::createApicalSegment(CellIdx cell)
 {
   return ::createSegment(apicalConnections, lastUsedIterationForApicalSegment_,
                          cell, iteration_, maxSegmentsPerCell_);
 }
 
-UInt ExtendedTemporalMemory::columnForCell(CellIdx cell)
+UInt ApicalTiebreakTemporalMemory::columnForCell(CellIdx cell)
 {
   _validateCell(cell);
 
   return cell / cellsPerColumn_;
 }
 
-vector<CellIdx> ExtendedTemporalMemory::cellsForColumn(UInt column)
+vector<CellIdx> ApicalTiebreakTemporalMemory::cellsForColumn(UInt column)
 {
   NTA_CHECK(column < numberOfColumns()) << "Invalid column " << column;
 
@@ -1297,96 +1108,57 @@ vector<CellIdx> ExtendedTemporalMemory::cellsForColumn(UInt column)
   return cellsInColumn;
 }
 
-PredictionData ExtendedTemporalMemory::getPredictionsForInput(
-  const CellIdx* basalInputBegin,
-  const CellIdx* basalInputEnd,
-  const CellIdx* apicalInputBegin,
-  const CellIdx* apicalInputEnd) const
-{
-  PredictionData pd;
-
-  calculateOverlaps(
-    pd.basalOverlaps, pd.activeBasalSegments,
-    pd.basalPotentialOverlaps, pd.matchingBasalSegments,
-    basalInputBegin, basalInputEnd, basalConnections,
-    connectedPermanence_, activationThreshold_, minThreshold_);
-
-  calculateOverlaps(
-    pd.apicalOverlaps, pd.activeApicalSegments,
-    pd.apicalPotentialOverlaps, pd.matchingApicalSegments,
-    apicalInputBegin, apicalInputEnd, apicalConnections,
-    connectedPermanence_, activationThreshold_, minThreshold_);
-
-  calculatePredictedCells(pd.predictedCells,
-                          pd.activeBasalSegments, basalConnections,
-                          pd.activeApicalSegments, apicalConnections,
-                          cellsPerColumn_);
-
-  return pd;
-}
-
-PredictionData ExtendedTemporalMemory::getSequenceMemoryPredictions(
-  const CellIdx* apicalInputBegin,
-  const CellIdx* apicalInputEnd) const
-{
-  NTA_CHECK(basalInputSize_ == numberOfCells());
-
-  return getPredictionsForInput(
-    activeCells_.data(), activeCells_.data() + activeCells_.size(),
-    apicalInputBegin, apicalInputEnd);
-}
-
-UInt ExtendedTemporalMemory::numberOfCells() const
+UInt ApicalTiebreakTemporalMemory::numberOfCells() const
 {
   return numberOfColumns() * cellsPerColumn_;
 }
 
-vector<CellIdx> ExtendedTemporalMemory::getActiveCells() const
+vector<CellIdx> ApicalTiebreakTemporalMemory::getActiveCells() const
 {
   return activeCells_;
 }
 
-vector<CellIdx> ExtendedTemporalMemory::getPredictedCells() const
+vector<CellIdx> ApicalTiebreakTemporalMemory::getPredictedCells() const
 {
   return predictedCells_;
 }
 
-vector<CellIdx> ExtendedTemporalMemory::getPredictedActiveCells() const
+vector<CellIdx> ApicalTiebreakTemporalMemory::getPredictedActiveCells() const
 {
   return predictedActiveCells_;
 }
 
-vector<CellIdx> ExtendedTemporalMemory::getWinnerCells() const
+vector<CellIdx> ApicalTiebreakTemporalMemory::getWinnerCells() const
 {
   return winnerCells_;
 }
 
-vector<Segment> ExtendedTemporalMemory::getActiveBasalSegments() const
+vector<Segment> ApicalTiebreakTemporalMemory::getActiveBasalSegments() const
 {
   return activeBasalSegments_;
 }
 
-vector<Segment> ExtendedTemporalMemory::getMatchingBasalSegments() const
+vector<Segment> ApicalTiebreakTemporalMemory::getMatchingBasalSegments() const
 {
   return matchingBasalSegments_;
 }
 
-vector<Segment> ExtendedTemporalMemory::getActiveApicalSegments() const
+vector<Segment> ApicalTiebreakTemporalMemory::getActiveApicalSegments() const
 {
   return activeApicalSegments_;
 }
 
-vector<Segment> ExtendedTemporalMemory::getMatchingApicalSegments() const
+vector<Segment> ApicalTiebreakTemporalMemory::getMatchingApicalSegments() const
 {
   return matchingApicalSegments_;
 }
 
-UInt ExtendedTemporalMemory::numberOfColumns() const
+UInt ApicalTiebreakTemporalMemory::numberOfColumns() const
 {
   return columnCount_;
 }
 
-bool ExtendedTemporalMemory::_validateCell(CellIdx cell)
+bool ApicalTiebreakTemporalMemory::_validateCell(CellIdx cell)
 {
   if (cell < numberOfCells())
     return true;
@@ -1395,151 +1167,159 @@ bool ExtendedTemporalMemory::_validateCell(CellIdx cell)
   return false;
 }
 
-UInt ExtendedTemporalMemory::getBasalInputSize() const
+UInt ApicalTiebreakTemporalMemory::getBasalInputSize() const
 {
   return basalInputSize_;
 }
 
-UInt ExtendedTemporalMemory::getApicalInputSize() const
+UInt ApicalTiebreakTemporalMemory::getApicalInputSize() const
 {
   return apicalInputSize_;
 }
 
-UInt ExtendedTemporalMemory::getCellsPerColumn() const
+UInt ApicalTiebreakTemporalMemory::getCellsPerColumn() const
 {
   return cellsPerColumn_;
 }
 
-UInt ExtendedTemporalMemory::getActivationThreshold() const
+UInt ApicalTiebreakTemporalMemory::getActivationThreshold() const
 {
   return activationThreshold_;
 }
 
-void ExtendedTemporalMemory::setActivationThreshold(UInt activationThreshold)
+void ApicalTiebreakTemporalMemory::setActivationThreshold(UInt activationThreshold)
 {
   activationThreshold_ = activationThreshold;
 }
 
-Permanence ExtendedTemporalMemory::getInitialPermanence() const
+Permanence ApicalTiebreakTemporalMemory::getInitialPermanence() const
 {
   return initialPermanence_;
 }
 
-void ExtendedTemporalMemory::setInitialPermanence(Permanence initialPermanence)
+void ApicalTiebreakTemporalMemory::setInitialPermanence(Permanence initialPermanence)
 {
   initialPermanence_ = initialPermanence;
 }
 
-Permanence ExtendedTemporalMemory::getConnectedPermanence() const
+Permanence ApicalTiebreakTemporalMemory::getConnectedPermanence() const
 {
   return connectedPermanence_;
 }
 
-void ExtendedTemporalMemory::setConnectedPermanence(
+void ApicalTiebreakTemporalMemory::setConnectedPermanence(
   Permanence connectedPermanence)
 {
   connectedPermanence_ = connectedPermanence;
 }
 
-UInt ExtendedTemporalMemory::getMinThreshold() const
+UInt ApicalTiebreakTemporalMemory::getMinThreshold() const
 {
   return minThreshold_;
 }
 
-void ExtendedTemporalMemory::setMinThreshold(UInt minThreshold)
+void ApicalTiebreakTemporalMemory::setMinThreshold(UInt minThreshold)
 {
   minThreshold_ = minThreshold;
 }
 
-UInt ExtendedTemporalMemory::getSampleSize() const
+UInt ApicalTiebreakTemporalMemory::getSampleSize() const
 {
   return sampleSize_;
 }
 
-void ExtendedTemporalMemory::setSampleSize(UInt sampleSize)
+void ApicalTiebreakTemporalMemory::setSampleSize(UInt sampleSize)
 {
   sampleSize_ = sampleSize;
 }
 
-bool ExtendedTemporalMemory::getLearnOnOneCell() const
+bool ApicalTiebreakTemporalMemory::getLearnOnOneCell() const
 {
   return learnOnOneCell_;
 }
 
-void ExtendedTemporalMemory::setLearnOnOneCell(bool learnOnOneCell)
+void ApicalTiebreakTemporalMemory::setLearnOnOneCell(bool learnOnOneCell)
 {
   learnOnOneCell_ = learnOnOneCell;
 }
 
-Permanence ExtendedTemporalMemory::getPermanenceIncrement() const
+Permanence ApicalTiebreakTemporalMemory::getPermanenceIncrement() const
 {
   return permanenceIncrement_;
 }
 
-void ExtendedTemporalMemory::setPermanenceIncrement(
+void ApicalTiebreakTemporalMemory::setPermanenceIncrement(
   Permanence permanenceIncrement)
 {
   permanenceIncrement_ = permanenceIncrement;
 }
 
-Permanence ExtendedTemporalMemory::getPermanenceDecrement() const
+Permanence ApicalTiebreakTemporalMemory::getPermanenceDecrement() const
 {
   return permanenceDecrement_;
 }
 
-void ExtendedTemporalMemory::setPermanenceDecrement(
+void ApicalTiebreakTemporalMemory::setPermanenceDecrement(
   Permanence permanenceDecrement)
 {
   permanenceDecrement_ = permanenceDecrement;
 }
 
-Permanence ExtendedTemporalMemory::getPredictedSegmentDecrement() const
+Permanence ApicalTiebreakTemporalMemory::getBasalPredictedSegmentDecrement() const
 {
-  return predictedSegmentDecrement_;
+  return basalPredictedSegmentDecrement_;
 }
 
-void ExtendedTemporalMemory::setPredictedSegmentDecrement(
+void ApicalTiebreakTemporalMemory::setBasalPredictedSegmentDecrement(
   Permanence predictedSegmentDecrement)
 {
-  predictedSegmentDecrement_ = predictedSegmentDecrement;
+  basalPredictedSegmentDecrement_ = predictedSegmentDecrement;
 }
 
-UInt ExtendedTemporalMemory::getMaxSegmentsPerCell() const
+void ApicalTiebreakTemporalMemory::setApicalPredictedSegmentDecrement(
+  Permanence predictedSegmentDecrement)
+{
+  apicalPredictedSegmentDecrement_ = predictedSegmentDecrement;
+}
+
+Permanence ApicalTiebreakTemporalMemory::getApicalPredictedSegmentDecrement() const
+{
+  return apicalPredictedSegmentDecrement_;
+}
+
+UInt ApicalTiebreakTemporalMemory::getMaxSegmentsPerCell() const
 {
   return maxSegmentsPerCell_;
 }
 
-UInt ExtendedTemporalMemory::getMaxSynapsesPerSegment() const
+UInt ApicalTiebreakTemporalMemory::getMaxSynapsesPerSegment() const
 {
   return maxSynapsesPerSegment_;
 }
 
-bool ExtendedTemporalMemory::getCheckInputs() const
+bool ApicalTiebreakTemporalMemory::getCheckInputs() const
 {
   return checkInputs_;
 }
 
-void ExtendedTemporalMemory::setCheckInputs(bool checkInputs)
+void ApicalTiebreakTemporalMemory::setCheckInputs(bool checkInputs)
 {
   checkInputs_ = checkInputs;
-}
-
-UInt ExtendedTemporalMemory::version() const
-{
-  return EXTENDED_TM_VERSION;
 }
 
 /**
 * Create a RNG with given seed
 */
-void ExtendedTemporalMemory::seed_(UInt64 seed)
+void ApicalTiebreakTemporalMemory::seed(UInt64 seed)
 {
   rng_ = Random(seed);
 }
 
-void ExtendedTemporalMemory::write(ExtendedTemporalMemoryProto::Builder& proto) const
+void ApicalTiebreakTemporalMemory::write(ApicalTiebreakTemporalMemoryProto::Builder& proto) const
 {
   proto.setColumnCount(columnCount_);
+  proto.setBasalInputSize(basalInputSize_);
+  proto.setApicalInputSize(apicalInputSize_);
   proto.setCellsPerColumn(cellsPerColumn_);
   proto.setActivationThreshold(activationThreshold_);
   proto.setInitialPermanence(initialPermanence_);
@@ -1548,7 +1328,8 @@ void ExtendedTemporalMemory::write(ExtendedTemporalMemoryProto::Builder& proto) 
   proto.setSampleSize(sampleSize_);
   proto.setPermanenceIncrement(permanenceIncrement_);
   proto.setPermanenceDecrement(permanenceDecrement_);
-  proto.setPredictedSegmentDecrement(predictedSegmentDecrement_);
+  proto.setBasalPredictedSegmentDecrement(basalPredictedSegmentDecrement_);
+  proto.setApicalPredictedSegmentDecrement(apicalPredictedSegmentDecrement_);
 
   proto.setMaxSegmentsPerCell(maxSegmentsPerCell_);
   proto.setMaxSynapsesPerSegment(maxSynapsesPerSegment_);
@@ -1703,12 +1484,12 @@ void ExtendedTemporalMemory::write(ExtendedTemporalMemoryProto::Builder& proto) 
   }
 }
 
-// Implementation note: this method sets up the instance using data from
-// proto. This method does not call initialize. As such we have to be careful
-// that everything in initialize is handled properly here.
-void ExtendedTemporalMemory::read(ExtendedTemporalMemoryProto::Reader& proto)
+void ApicalTiebreakTemporalMemory::read(
+  ApicalTiebreakTemporalMemoryProto::Reader& proto)
 {
   columnCount_ = proto.getColumnCount();
+  basalInputSize_ = proto.getBasalInputSize();
+  apicalInputSize_ = proto.getApicalInputSize();
   cellsPerColumn_ = proto.getCellsPerColumn();
   activationThreshold_ = proto.getActivationThreshold();
   initialPermanence_ = proto.getInitialPermanence();
@@ -1717,7 +1498,8 @@ void ExtendedTemporalMemory::read(ExtendedTemporalMemoryProto::Reader& proto)
   sampleSize_ = proto.getSampleSize();
   permanenceIncrement_ = proto.getPermanenceIncrement();
   permanenceDecrement_ = proto.getPermanenceDecrement();
-  predictedSegmentDecrement_ = proto.getPredictedSegmentDecrement();
+  basalPredictedSegmentDecrement_ = proto.getBasalPredictedSegmentDecrement();
+  apicalPredictedSegmentDecrement_ = proto.getApicalPredictedSegmentDecrement();
 
   maxSegmentsPerCell_ = proto.getMaxSegmentsPerCell();
   maxSynapsesPerSegment_ = proto.getMaxSynapsesPerSegment();
@@ -1858,9 +1640,11 @@ getComparableSegmentSet(const Connections& connections,
   return segmentSet;
 }
 
-bool ExtendedTemporalMemory::operator==(const ExtendedTemporalMemory& other)
+bool ApicalTiebreakTemporalMemory::operator==(const ApicalTiebreakTemporalMemory& other)
 {
   if (columnCount_ != other.columnCount_ ||
+      basalInputSize_ != other.basalInputSize_ ||
+      apicalInputSize_ != other.apicalInputSize_ ||
       cellsPerColumn_ != other.cellsPerColumn_ ||
       activationThreshold_ != other.activationThreshold_ ||
       minThreshold_ != other.minThreshold_ ||
@@ -1869,7 +1653,8 @@ bool ExtendedTemporalMemory::operator==(const ExtendedTemporalMemory& other)
       connectedPermanence_ != other.connectedPermanence_ ||
       permanenceIncrement_ != other.permanenceIncrement_ ||
       permanenceDecrement_ != other.permanenceDecrement_ ||
-      predictedSegmentDecrement_ != other.predictedSegmentDecrement_ ||
+      basalPredictedSegmentDecrement_ != other.basalPredictedSegmentDecrement_ ||
+      apicalPredictedSegmentDecrement_ != other.apicalPredictedSegmentDecrement_ ||
       activeCells_ != other.activeCells_ ||
       winnerCells_ != other.winnerCells_ ||
       maxSegmentsPerCell_ != other.maxSegmentsPerCell_ ||
@@ -1908,7 +1693,7 @@ bool ExtendedTemporalMemory::operator==(const ExtendedTemporalMemory& other)
   return true;
 }
 
-bool ExtendedTemporalMemory::operator!=(const ExtendedTemporalMemory& other)
+bool ApicalTiebreakTemporalMemory::operator!=(const ApicalTiebreakTemporalMemory& other)
 {
   return !(*this == other);
 }
@@ -1919,9 +1704,9 @@ bool ExtendedTemporalMemory::operator!=(const ExtendedTemporalMemory& other)
 //----------------------------------------------------------------------
 
 // Print the main TM creation parameters
-void ExtendedTemporalMemory::printParameters()
+void ApicalTiebreakTemporalMemory::printParameters()
 {
-  std::cout << "------------CPP ExtendedTemporalMemory Parameters ------------------\n";
+  std::cout << "------------CPP ApicalTiebreakTemporalMemory Parameters ------------------\n";
   std::cout
     << "version                   = " << EXTENDED_TM_VERSION << std::endl
     << "numColumns                = " << numberOfColumns() << std::endl
@@ -1934,5 +1719,355 @@ void ExtendedTemporalMemory::printParameters()
     << "learnOnOneCell            = " << getLearnOnOneCell() << std::endl
     << "permanenceIncrement       = " << getPermanenceIncrement() << std::endl
     << "permanenceDecrement       = " << getPermanenceDecrement() << std::endl
-    << "predictedSegmentDecrement = " << getPredictedSegmentDecrement() << std::endl;
+    << "basalPredictedSegmentDecrement = " << getBasalPredictedSegmentDecrement() << std::endl
+    << "apicalPredictedSegmentDecrement = " << getApicalPredictedSegmentDecrement() << std::endl;
+}
+
+
+//----------------------------------------------------------------------
+// ApicalTiebreakPairMemory
+//----------------------------------------------------------------------
+
+template<typename Iterator>
+bool isSortedWithoutDuplicates(Iterator begin, Iterator end)
+{
+  if (std::distance(begin, end) >= 2)
+  {
+    Iterator now = begin;
+    Iterator next = begin + 1;
+    while (next != end)
+    {
+      if (*now >= *next)
+      {
+        return false;
+      }
+
+      now = next++;
+    }
+  }
+
+  return true;
+}
+
+
+ApicalTiebreakPairMemory::ApicalTiebreakPairMemory(
+  UInt columnCount,
+  UInt basalInputSize,
+  UInt apicalInputSize,
+  UInt cellsPerColumn,
+  UInt activationThreshold,
+  Permanence initialPermanence,
+  Permanence connectedPermanence,
+  UInt minThreshold,
+  UInt sampleSize,
+  Permanence permanenceIncrement,
+  Permanence permanenceDecrement,
+  Permanence basalPredictedSegmentDecrement,
+  Permanence apicalPredictedSegmentDecrement,
+  bool learnOnOneCell,
+  Int seed,
+  UInt maxSegmentsPerCell,
+  UInt maxSynapsesPerSegment,
+  bool checkInputs) : ApicalTiebreakTemporalMemory(columnCount,
+                                             basalInputSize,
+                                             apicalInputSize,
+                                             cellsPerColumn,
+                                             activationThreshold,
+                                             initialPermanence,
+                                             connectedPermanence,
+                                             minThreshold,
+                                             sampleSize,
+                                             permanenceIncrement,
+                                             permanenceDecrement,
+                                             basalPredictedSegmentDecrement,
+                                             apicalPredictedSegmentDecrement,
+                                             learnOnOneCell,
+                                             seed,
+                                             maxSegmentsPerCell,
+                                             maxSynapsesPerSegment,
+                                             checkInputs)
+{
+}
+
+void ApicalTiebreakPairMemory::compute(
+  const UInt* activeColumnsBegin,
+  const UInt* activeColumnsEnd,
+  const CellIdx* basalInputBegin,
+  const CellIdx* basalInputEnd,
+  const CellIdx* apicalInputBegin,
+  const CellIdx* apicalInputEnd,
+  const CellIdx* basalGrowthCandidatesBegin,
+  const CellIdx* basalGrowthCandidatesEnd,
+  const CellIdx* apicalGrowthCandidatesBegin,
+  const CellIdx* apicalGrowthCandidatesEnd,
+  bool learn)
+{
+  if (checkInputs_)
+  {
+    NTA_CHECK(isSortedWithoutDuplicates(activeColumnsBegin, activeColumnsEnd))
+      << "activeColumns must be sorted without duplicates.";
+    NTA_CHECK(isSortedWithoutDuplicates(basalInputBegin, basalInputEnd))
+      << "basalInput must be sorted without duplicates.";
+    NTA_CHECK(isSortedWithoutDuplicates(apicalInputBegin, apicalInputEnd))
+      << "apicalInput must be sorted without duplicates.";
+    NTA_CHECK(isSortedWithoutDuplicates(basalGrowthCandidatesBegin,
+                                        basalGrowthCandidatesEnd))
+      << "basalGrowthCandidates must be sorted without duplicates.";
+    NTA_CHECK(isSortedWithoutDuplicates(apicalGrowthCandidatesBegin,
+                                        apicalGrowthCandidatesEnd))
+      << "apicalGrowthCandidates must be sorted without duplicates.";
+
+    NTA_CHECK(std::all_of(activeColumnsBegin, activeColumnsEnd,
+                          [&](UInt c) { return c < columnCount_; }))
+      << "Values in activeColumns must be within the range "
+      << "[0," << columnCount_ << ").";
+    NTA_CHECK(std::all_of(basalInputBegin, basalInputEnd,
+                          [&](UInt c) { return c < basalInputSize_; }))
+      << "Values in basalInput must be within the range "
+      << "[0," << basalInputSize_ << ").";
+    NTA_CHECK(std::all_of(apicalInputBegin, apicalInputEnd,
+                          [&](UInt c) { return c < apicalInputSize_; }))
+      << "Values in apicalInput must be within the range "
+      << "[0," << apicalInputSize_ << ").";
+    NTA_CHECK(std::all_of(basalGrowthCandidatesBegin, basalGrowthCandidatesEnd,
+                          [&](UInt c) { return c < basalInputSize_; }))
+      << "Values in basalGrowthCandidates must be within the range " <<
+      "[0," << basalInputSize_ << ").";
+    NTA_CHECK(std::all_of(apicalGrowthCandidatesBegin, apicalGrowthCandidatesEnd,
+                          [&](UInt c) { return c < apicalInputSize_; }))
+      << "Values in apicalGrowthCandidates must be within the range "
+      << "[0," << apicalInputSize_ << ").";
+  }
+
+  this->depolarizeCells(
+    basalInputBegin, basalInputEnd,
+    apicalInputBegin, apicalInputEnd,
+    learn);
+  this->activateCells(
+    activeColumnsBegin, activeColumnsEnd,
+    basalInputBegin, basalInputEnd,
+    apicalInputBegin, apicalInputEnd,
+    basalGrowthCandidatesBegin, basalGrowthCandidatesEnd,
+    apicalGrowthCandidatesBegin, apicalGrowthCandidatesEnd,
+    learn);
+}
+
+void ApicalTiebreakPairMemory::compute(
+  const vector<UInt>& activeColumns,
+  const vector<CellIdx>& basalInput,
+  const vector<CellIdx>& apicalInput,
+  const vector<CellIdx>& basalGrowthCandidates,
+  const vector<CellIdx>& apicalGrowthCandidates,
+  bool learn)
+{
+  this->compute(
+    activeColumns.data(), activeColumns.data() + activeColumns.size(),
+    basalInput.data(), basalInput.data() + basalInput.size(),
+    apicalInput.data(), apicalInput.data() + apicalInput.size(),
+    basalGrowthCandidates.data(),
+    basalGrowthCandidates.data() + basalGrowthCandidates.size(),
+    apicalGrowthCandidates.data(),
+    apicalGrowthCandidates.data() + apicalGrowthCandidates.size(),
+    learn);
+}
+
+void ApicalTiebreakPairMemory::read(
+  ApicalTiebreakTemporalMemoryProto::Reader& proto)
+{
+  ApicalTiebreakTemporalMemory::read(proto);
+}
+
+void ApicalTiebreakPairMemory::write(
+  ApicalTiebreakTemporalMemoryProto::Builder& proto) const
+{
+  ApicalTiebreakTemporalMemory::write(proto);
+}
+
+//----------------------------------------------------------------------
+// ApicalTiebreakSequenceMemory
+//----------------------------------------------------------------------
+
+ApicalTiebreakSequenceMemory::ApicalTiebreakSequenceMemory()
+{
+}
+
+ApicalTiebreakSequenceMemory::ApicalTiebreakSequenceMemory(
+  UInt columnCount,
+  UInt apicalInputSize,
+  UInt cellsPerColumn,
+  UInt activationThreshold,
+  Permanence initialPermanence,
+  Permanence connectedPermanence,
+  UInt minThreshold,
+  UInt sampleSize,
+  Permanence permanenceIncrement,
+  Permanence permanenceDecrement,
+  Permanence basalPredictedSegmentDecrement,
+  Permanence apicalPredictedSegmentDecrement,
+  bool learnOnOneCell,
+  Int seed,
+  UInt maxSegmentsPerCell,
+  UInt maxSynapsesPerSegment,
+  bool checkInputs) : ApicalTiebreakTemporalMemory(columnCount,
+                                             columnCount * cellsPerColumn,
+                                             apicalInputSize,
+                                             cellsPerColumn,
+                                             activationThreshold,
+                                             initialPermanence,
+                                             connectedPermanence,
+                                             minThreshold,
+                                             sampleSize,
+                                             permanenceIncrement,
+                                             permanenceDecrement,
+                                             basalPredictedSegmentDecrement,
+                                             apicalPredictedSegmentDecrement,
+                                             learnOnOneCell,
+                                             seed,
+                                             maxSegmentsPerCell,
+                                             maxSynapsesPerSegment,
+                                             checkInputs)
+{
+}
+
+void ApicalTiebreakSequenceMemory::compute(
+  const UInt* activeColumnsBegin,
+  const UInt* activeColumnsEnd,
+  const CellIdx* apicalInputBegin,
+  const CellIdx* apicalInputEnd,
+  const CellIdx* apicalGrowthCandidatesBegin,
+  const CellIdx* apicalGrowthCandidatesEnd,
+  bool learn)
+{
+  if (checkInputs_)
+  {
+    NTA_CHECK(isSortedWithoutDuplicates(activeColumnsBegin, activeColumnsEnd))
+      << "activeColumns must be sorted without duplicates.";
+    NTA_CHECK(isSortedWithoutDuplicates(apicalInputBegin, apicalInputEnd))
+      << "apicalInput must be sorted without duplicates.";
+    NTA_CHECK(isSortedWithoutDuplicates(apicalGrowthCandidatesBegin,
+                                        apicalGrowthCandidatesEnd))
+      << "apicalGrowthCandidates must be sorted without duplicates.";
+
+    NTA_CHECK(std::all_of(activeColumnsBegin, activeColumnsEnd,
+                          [&](UInt c) { return c < columnCount_; }))
+      << "Values in activeColumns must be within the range "
+      << "[0," << columnCount_ << ").";
+    NTA_CHECK(std::all_of(apicalInputBegin, apicalInputEnd,
+                          [&](UInt c) { return c < apicalInputSize_; }))
+      << "Values in apicalInput must be within the range "
+      << "[0," << apicalInputSize_ << ").";
+    NTA_CHECK(std::all_of(apicalGrowthCandidatesBegin, apicalGrowthCandidatesEnd,
+                          [&](UInt c) { return c < apicalInputSize_; }))
+      << "Values in apicalGrowthCandidates must be within the range "
+      << "[0," << apicalInputSize_ << ").";
+  }
+
+  prevPredictedCells_ = predictedCells_;
+
+  const vector<CellIdx> prevActiveCells(activeCells_);
+  const vector<CellIdx> prevWinnerCells(winnerCells_);
+  this->activateCells(
+    activeColumnsBegin, activeColumnsEnd,
+    prevActiveCells.data(), prevActiveCells.data() + prevActiveCells.size(),
+    prevApicalInput_.data(), prevApicalInput_.data() + prevApicalInput_.size(),
+    prevWinnerCells.data(), prevWinnerCells.data() + prevWinnerCells.size(),
+    prevApicalGrowthCandidates_.data(),
+    prevApicalGrowthCandidates_.data() + prevApicalGrowthCandidates_.size(),
+    learn);
+  this->depolarizeCells(
+    activeCells_.data(), activeCells_.data() + activeCells_.size(),
+    apicalInputBegin, apicalInputEnd,
+    learn);
+
+  prevApicalInput_.assign(apicalInputBegin, apicalInputEnd);
+  prevApicalGrowthCandidates_.assign(
+    apicalGrowthCandidatesBegin, apicalGrowthCandidatesEnd);
+}
+
+void ApicalTiebreakSequenceMemory::compute(
+  const vector<UInt>& activeColumns,
+  const vector<CellIdx>& apicalInput,
+  const vector<CellIdx>& apicalGrowthCandidates,
+  bool learn)
+{
+  this->compute(
+    activeColumns.data(), activeColumns.data() + activeColumns.size(),
+    apicalInput.data(), apicalInput.data() + apicalInput.size(),
+    apicalGrowthCandidates.data(),
+    apicalGrowthCandidates.data() + apicalGrowthCandidates.size(),
+    learn);
+}
+
+void ApicalTiebreakSequenceMemory::reset(void)
+{
+  ApicalTiebreakTemporalMemory::reset();
+
+  prevApicalInput_.clear();
+  prevApicalGrowthCandidates_.clear();
+  prevPredictedCells_.clear();
+}
+
+vector<CellIdx> ApicalTiebreakSequenceMemory::getPredictedCells() const
+{
+  return prevPredictedCells_;
+}
+
+vector<CellIdx> ApicalTiebreakSequenceMemory::getNextPredictedCells() const
+{
+  return predictedCells_;
+}
+
+void ApicalTiebreakSequenceMemory::read(
+  ApicalTiebreakSequenceMemoryProto::Reader& proto)
+{
+  auto _tm = proto.getApicalTiebreakTemporalMemory();
+  ApicalTiebreakTemporalMemory::read(_tm);
+
+  prevApicalInput_.clear();
+  for (auto cell : proto.getPrevApicalInput())
+  {
+    prevApicalInput_.push_back(cell);
+  }
+
+  prevApicalGrowthCandidates_.clear();
+  for (auto cell : proto.getPrevApicalGrowthCandidates())
+  {
+    prevApicalGrowthCandidates_.push_back(cell);
+  }
+
+  prevPredictedCells_.clear();
+  for (auto cell : proto.getPrevPredictedCells())
+  {
+    prevPredictedCells_.push_back(cell);
+  }
+}
+
+void ApicalTiebreakSequenceMemory::write(
+  ApicalTiebreakSequenceMemoryProto::Builder& proto) const
+{
+  auto _tm = proto.initApicalTiebreakTemporalMemory();
+  ApicalTiebreakTemporalMemory::write(_tm);
+
+  auto prevApicalInput = proto.initPrevApicalInput(prevApicalInput_.size());
+  UInt i = 0;
+  for (CellIdx cell : prevApicalInput_)
+  {
+    prevApicalInput.set(i++, cell);
+  }
+
+  auto prevApicalGrowthCandidates = proto.initPrevApicalGrowthCandidates(
+    prevApicalGrowthCandidates_.size());
+  i = 0;
+  for (CellIdx cell : prevApicalGrowthCandidates_)
+  {
+    prevApicalGrowthCandidates.set(i++, cell);
+  }
+
+  auto prevPredictedCells = proto.initPrevPredictedCells(
+    prevPredictedCells_.size());
+  i = 0;
+  for (CellIdx cell : prevPredictedCells_)
+  {
+    prevPredictedCells.set(i++, cell);
+  }
 }
