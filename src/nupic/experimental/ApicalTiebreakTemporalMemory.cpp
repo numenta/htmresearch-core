@@ -1749,6 +1749,23 @@ bool isSortedWithoutDuplicates(Iterator begin, Iterator end)
   return true;
 }
 
+static vector<CellIdx>
+getUniqueCellsForSegments(const vector<Segment>& segments,
+                          const Connections& connections)
+{
+  vector<CellIdx> cells;
+
+  for (Segment segment : segments)
+  {
+    cells.push_back(connections.cellForSegment(segment));
+  }
+
+  std::sort(cells.begin(), cells.end());
+  auto last = std::unique(cells.begin(), cells.end());
+  cells.erase(last, cells.end());
+
+  return cells;
+}
 
 ApicalTiebreakPairMemory::ApicalTiebreakPairMemory(
   UInt columnCount,
@@ -1869,6 +1886,16 @@ void ApicalTiebreakPairMemory::compute(
     apicalGrowthCandidates.data(),
     apicalGrowthCandidates.data() + apicalGrowthCandidates.size(),
     learn);
+}
+
+vector<CellIdx> ApicalTiebreakPairMemory::getBasalPredictedCells() const
+{
+  return getUniqueCellsForSegments(activeBasalSegments_, basalConnections);
+}
+
+vector<CellIdx> ApicalTiebreakPairMemory::getApicalPredictedCells() const
+{
+  return getUniqueCellsForSegments(activeApicalSegments_, apicalConnections);
 }
 
 void ApicalTiebreakPairMemory::read(
@@ -2015,6 +2042,16 @@ vector<CellIdx> ApicalTiebreakSequenceMemory::getPredictedCells() const
 vector<CellIdx> ApicalTiebreakSequenceMemory::getNextPredictedCells() const
 {
   return predictedCells_;
+}
+
+vector<CellIdx> ApicalTiebreakSequenceMemory::getNextBasalPredictedCells() const
+{
+  return getUniqueCellsForSegments(activeBasalSegments_, basalConnections);
+}
+
+vector<CellIdx> ApicalTiebreakSequenceMemory::getNextApicalPredictedCells() const
+{
+  return getUniqueCellsForSegments(activeApicalSegments_, apicalConnections);
 }
 
 void ApicalTiebreakSequenceMemory::read(

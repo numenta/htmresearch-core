@@ -424,6 +424,24 @@ using namespace nupic;
                   apicalGrowthCandidates.end(),
                   learn);
   }
+
+  inline PyObject* getBasalPredictedCells()
+  {
+    const std::vector<CellIdx> cells = self->getBasalPredictedCells();
+
+    return nupic::NumpyVectorT<nupic::UInt32>(
+      cells.size(), cells.data()
+    ).forPython();
+  }
+
+  inline PyObject* getApicalPredictedCells()
+  {
+    const std::vector<CellIdx> cells = self->getApicalPredictedCells();
+
+    return nupic::NumpyVectorT<nupic::UInt32>(
+      cells.size(), cells.data()
+    ).forPython();
+  }
 }
 
 %extend nupic::experimental::apical_tiebreak_temporal_memory::ApicalTiebreakSequenceMemory
@@ -624,6 +642,24 @@ using namespace nupic;
                   apicalGrowthCandidates.end(),
                   learn);
   }
+
+  inline PyObject* getNextBasalPredictedCells()
+  {
+    const std::vector<CellIdx> cells = self->getNextBasalPredictedCells();
+
+    return nupic::NumpyVectorT<nupic::UInt32>(
+      cells.size(), cells.data()
+    ).forPython();
+  }
+
+  inline PyObject* getNextApicalPredictedCells()
+  {
+    const std::vector<CellIdx> cells = self->getNextApicalPredictedCells();
+
+    return nupic::NumpyVectorT<nupic::UInt32>(
+      cells.size(), cells.data()
+    ).forPython();
+  }
 }
 
 %ignore nupic::experimental::apical_tiebreak_temporal_memory::ApicalTiebreakTemporalMemory::getActiveCells;
@@ -631,5 +667,10 @@ using namespace nupic;
 %ignore nupic::experimental::apical_tiebreak_temporal_memory::ApicalTiebreakTemporalMemory::getPredictedCells;
 %ignore nupic::experimental::apical_tiebreak_temporal_memory::ApicalTiebreakTemporalMemory::getWinnerCells;
 %ignore nupic::experimental::apical_tiebreak_temporal_memory::ApicalTiebreakTemporalMemory::cellsForColumn;
+
+%ignore nupic::experimental::apical_tiebreak_temporal_memory::ApicalTiebreakPairMemory::getBasalPredictedCells;
+%ignore nupic::experimental::apical_tiebreak_temporal_memory::ApicalTiebreakPairMemory::getApicalPredictedCells;
+%ignore nupic::experimental::apical_tiebreak_temporal_memory::ApicalTiebreakSequenceMemory::getNextBasalPredictedCells;
+%ignore nupic::experimental::apical_tiebreak_temporal_memory::ApicalTiebreakSequenceMemory::getNextApicalPredictedCells;
 
 %include <nupic/experimental/ApicalTiebreakTemporalMemory.hpp>

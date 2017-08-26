@@ -613,6 +613,16 @@ namespace nupic {
           const std::vector<CellIdx>& apicalGrowthCandidates,
           bool learn = true);
 
+        /**
+         * Returns the cells with active basal segments.
+         */
+        std::vector<CellIdx> getBasalPredictedCells() const;
+
+        /**
+         * Returns the cells with active apical segments.
+         */
+        std::vector<CellIdx> getApicalPredictedCells() const;
+
         using Serializable::write;
         virtual void write(
           ApicalTiebreakTemporalMemoryProto::Builder& proto) const override;
@@ -714,6 +724,16 @@ namespace nupic {
          * @returns Indices of predicted cells.
          */
         std::vector<CellIdx> getNextPredictedCells() const;
+
+        /**
+         * Returns the cells with active basal segments.
+         */
+        std::vector<CellIdx> getNextBasalPredictedCells() const;
+
+        /**
+         * Returns the cells with active apical segments.
+         */
+        std::vector<CellIdx> getNextApicalPredictedCells() const;
 
         /**
          * Indicates the start of a new sequence.
