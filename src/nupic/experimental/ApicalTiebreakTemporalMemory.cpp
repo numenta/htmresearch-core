@@ -1754,6 +1754,7 @@ getUniqueCellsForSegments(const vector<Segment>& segments,
                           const Connections& connections)
 {
   vector<CellIdx> cells;
+  cells.reserve(segments.size());
 
   for (Segment segment : segments)
   {
