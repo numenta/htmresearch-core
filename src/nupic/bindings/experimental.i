@@ -643,6 +643,24 @@ using namespace nupic;
                   learn);
   }
 
+  inline PyObject* getPredictedCells()
+  {
+    const std::vector<CellIdx> predictedCells = self->getPredictedCells();
+
+    return nupic::NumpyVectorT<nupic::UInt32>(
+      predictedCells.size(), predictedCells.data()
+    ).forPython();
+  }
+
+  inline PyObject* getNextPredictedCells()
+  {
+    const std::vector<CellIdx> predictedCells = self->getNextPredictedCells();
+
+    return nupic::NumpyVectorT<nupic::UInt32>(
+      predictedCells.size(), predictedCells.data()
+    ).forPython();
+  }
+
   inline PyObject* getNextBasalPredictedCells()
   {
     const std::vector<CellIdx> cells = self->getNextBasalPredictedCells();
@@ -667,6 +685,9 @@ using namespace nupic;
 %ignore nupic::experimental::apical_tiebreak_temporal_memory::ApicalTiebreakTemporalMemory::getPredictedCells;
 %ignore nupic::experimental::apical_tiebreak_temporal_memory::ApicalTiebreakTemporalMemory::getWinnerCells;
 %ignore nupic::experimental::apical_tiebreak_temporal_memory::ApicalTiebreakTemporalMemory::cellsForColumn;
+
+%ignore nupic::experimental::apical_tiebreak_temporal_memory::ApicalTiebreakSequenceMemory::getPredictedCells;
+%ignore nupic::experimental::apical_tiebreak_temporal_memory::ApicalTiebreakSequenceMemory::getNextPredictedCells;
 
 %ignore nupic::experimental::apical_tiebreak_temporal_memory::ApicalTiebreakPairMemory::getBasalPredictedCells;
 %ignore nupic::experimental::apical_tiebreak_temporal_memory::ApicalTiebreakPairMemory::getApicalPredictedCells;
