@@ -28,18 +28,18 @@ import unittest
 
 import capnp
 
-from htmresearch_core.experimental import ExtendedTemporalMemory
-from htmresearch_core.proto.ExtendedTemporalMemoryProto_capnp import ExtendedTemporalMemoryProto
+from htmresearch_core.experimental import ApicalTiebreakPairMemory
+from htmresearch_core.proto.ApicalTiebreakTemporalMemoryProto_capnp import ApicalTiebreakTemporalMemoryProto
 
 
 
-class ETMTest(unittest.TestCase):
+class ApicalTiebreakTemporalMemoryTest(unittest.TestCase):
 
 
   def testSerialization(self):
-    etm = ExtendedTemporalMemory(columnCount=512)
-    proto = ExtendedTemporalMemoryProto.new_message()
-    etm.write(proto)
+    tm = ApicalTiebreakPairMemory(columnCount=512)
+    proto = ApicalTiebreakTemporalMemoryProto.new_message()
+    tm.write(proto)
 
     tempdir = tempfile.mkdtemp()
     try:
@@ -47,8 +47,8 @@ class ETMTest(unittest.TestCase):
       with open(outPath, "w+b") as f:
         proto.write(f)
         f.seek(0)
-        proto = ExtendedTemporalMemoryProto.read(f)
-        newEtm = ExtendedTemporalMemory.read(proto)
+        proto = ApicalTiebreakTemporalMemoryProto.read(f)
+        tmNew = ApicalTiebreakPairMemory.read(proto)
     finally:
       shutil.rmtree(tempdir)
-    self.assertEqual(etm.numberOfColumns(), newEtm.numberOfColumns())
+    self.assertEqual(tm.numberOfColumns(), tmNew.numberOfColumns())
