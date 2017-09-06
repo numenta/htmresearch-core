@@ -193,7 +193,7 @@ message(STATUS "PYTHON_LIBRARIES    = ${PYTHON_LIBRARIES}")
 # List all .capnp files here. The C++ files will be generated and included
 # when compiling later on.
 set(src_capnp_specs_rel
-  nupic/proto/ExtendedTemporalMemoryProto.capnp
+  nupic/proto/ApicalTiebreakTemporalMemoryProto.capnp
 )
 
 # Create custom command for generating C++ code from .capnp schema files.
@@ -251,7 +251,8 @@ message(STATUS "src_common_os_libs        = ${src_common_os_libs}")
 set(src_lib_static_htmresearchcore_solo htmresearch_core_solo)
 
 set(src_htmresearchcore_srcs
-    nupic/experimental/ExtendedTemporalMemory.cpp
+    nupic/experimental/ApicalTiebreakTemporalMemory.cpp
+    nupic/experimental/SDRSelection.cpp
 )
 set(src_lib_static_htmresearchcore_srcs
     ${src_capnp_generated_srcs}
@@ -316,7 +317,7 @@ message(STATUS "src_common_test_exe_libs = ${src_common_test_exe_libs}")
 #
 set(src_executable_gtests unit_tests)
 add_executable(${src_executable_gtests}
-               test/unit/experimental/ExtendedTemporalMemoryTest.cpp
+               test/unit/experimental/ApicalTiebreakTemporalMemoryTest.cpp
                test/unit/UnitTestMain.cpp
                test/unit/utils/GroupByTest.cpp
 )

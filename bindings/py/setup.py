@@ -80,7 +80,7 @@ if __name__ == "__main__":
 
   # Copy the proto files into the proto Python package.
   protoSchemasToCopy = [
-    "ExtendedTemporalMemoryProto.capnp"
+    "ApicalTiebreakTemporalMemoryProto.capnp"
   ]
 
   for schemaFilename in protoSchemasToCopy:

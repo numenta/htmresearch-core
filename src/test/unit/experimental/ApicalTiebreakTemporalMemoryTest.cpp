@@ -21,7 +21,7 @@
  */
 
 /** @file
- * Implementation of unit tests for ExtendedTemporalMemory
+ * Implementation of unit tests for ApicalTiebreakTemporalMemory
  */
 
 #include <cstring>
@@ -31,32 +31,29 @@
 #include <nupic/types/Types.hpp>
 #include <nupic/utils/Log.hpp>
 
-#include <nupic/experimental/ExtendedTemporalMemory.hpp>
+#include <nupic/experimental/ApicalTiebreakTemporalMemory.hpp>
 #include "gtest/gtest.h"
 
 using namespace nupic;
-using namespace nupic::experimental::extended_temporal_memory;
+using namespace nupic::experimental::apical_tiebreak_temporal_memory;
 using namespace std;
 
 #define EPSILON 0.0000001
 
 namespace {
 
-  TEST(ExtendedTemporalMemoryTest, testInitInvalidParams)
+  TEST(ApicalTiebreakTemporalMemoryTest, testInitInvalidParams)
   {
     // Invalid columnCount
-    ExtendedTemporalMemory tm1;
-    EXPECT_THROW(tm1.initialize(
+    EXPECT_THROW(ApicalTiebreakSequenceMemory(
                    /*columnCount*/ 0,
-                   /*basalInputSize*/ 0,
                    /*apicalInputSize*/ 0,
                    /*cellsPerColumn*/ 32),
                  exception);
 
     // Invalid cellsPerColumn
-    EXPECT_THROW(tm1.initialize(
+    EXPECT_THROW(ApicalTiebreakSequenceMemory(
                    /*columnCount*/ 32,
-                   /*basalInputSize*/ 0,
                    /*apicalInputSize*/ 0,
                    /*cellsPerColumn*/ 0),
                  exception);
@@ -66,11 +63,10 @@ namespace {
    * When a predicted column is activated, only the predicted cells in the
    * columns should be activated.
    */
-  TEST(ExtendedTemporalMemoryTest, ActivateCorrectlyPredictiveCells)
+  TEST(ApicalTiebreakTemporalMemoryTest, ActivateCorrectlyPredictiveCells)
   {
-    ExtendedTemporalMemory tm(
+    ApicalTiebreakSequenceMemory tm(
       /*columnCount*/ 32,
-      /*basalInputSize*/ 32 * 4,
       /*apicalInputSize*/ 0,
       /*cellsPerColumn*/ 4,
       /*activationThreshold*/ 3,
@@ -80,7 +76,8 @@ namespace {
       /*sampleSize*/ 3,
       /*permanenceIncrement*/ 0.10,
       /*permanenceDecrement*/ 0.10,
-      /*predictedSegmentDecrement*/ 0.0,
+      /*basalPredictedSegmentDecrement*/ 0.0,
+      /*apicalPredictedSegmentDecrement*/ 0.0,
       /*learnOnOneCell*/ false,
       /*seed*/ 42
       );
@@ -97,8 +94,8 @@ namespace {
     tm.basalConnections.createSynapse(activeSegment, previousActiveCells[2], 0.5);
     tm.basalConnections.createSynapse(activeSegment, previousActiveCells[3], 0.5);
 
-    tm.sequenceMemoryCompute(previousActiveColumns);
-    tm.sequenceMemoryCompute(activeColumns);
+    tm.compute(previousActiveColumns);
+    tm.compute(activeColumns);
     ASSERT_EQ(expectedActiveCells, tm.getPredictedCells());
 
     EXPECT_EQ(expectedActiveCells, tm.getActiveCells());
@@ -108,11 +105,10 @@ namespace {
    * When an unpredicted column is activated, every cell in the column should
    * become active.
    */
-  TEST(ExtendedTemporalMemoryTest, BurstUnpredictedColumns)
+  TEST(ApicalTiebreakTemporalMemoryTest, BurstUnpredictedColumns)
   {
-    ExtendedTemporalMemory tm(
+    ApicalTiebreakSequenceMemory tm(
       /*columnCount*/ 32,
-      /*basalInputSize*/ 32 * 4,
       /*apicalInputSize*/ 0,
       /*cellsPerColumn*/ 4,
       /*activationThreshold*/ 3,
@@ -122,7 +118,8 @@ namespace {
       /*sampleSize*/ 3,
       /*permanenceIncrement*/ 0.10,
       /*permanenceDecrement*/ 0.10,
-      /*predictedSegmentDecrement*/ 0.0,
+      /*basalPredictedSegmentDecrement*/ 0.0,
+      /*apicalPredictedSegmentDecrement*/ 0.0,
       /*learnOnOneCell*/ false,
       /*seed*/ 42
       );
@@ -130,21 +127,20 @@ namespace {
     const vector<UInt> activeColumns = {0};
     const vector<CellIdx> burstingCells = {0, 1, 2, 3};
 
-    tm.sequenceMemoryCompute(activeColumns);
+    tm.compute(activeColumns);
 
     EXPECT_EQ(burstingCells, tm.getActiveCells());
   }
 
   /**
-   * When the ExtendedTemporalMemory receives zero active columns, it should still
+   * When the ApicalTiebreakTemporalMemory receives zero active columns, it should still
    * compute the active cells, winner cells, and predictive cells. All should be
    * empty.
    */
-  TEST(ExtendedTemporalMemoryTest, ZeroActiveColumns)
+  TEST(ApicalTiebreakTemporalMemoryTest, ZeroActiveColumns)
   {
-    ExtendedTemporalMemory tm(
+    ApicalTiebreakSequenceMemory tm(
       /*columnCount*/ 32,
-      /*basalInputSize*/ 32 * 4,
       /*apicalInputSize*/ 0,
       /*cellsPerColumn*/ 4,
       /*activationThreshold*/ 3,
@@ -154,7 +150,8 @@ namespace {
       /*sampleSize*/ 3,
       /*permanenceIncrement*/ 0.10,
       /*permanenceDecrement*/ 0.10,
-      /*predictedSegmentDecrement*/ 0.02,
+      /*basalPredictedSegmentDecrement*/ 0.02,
+      /*apicalPredictedSegmentDecrement*/ 0.0,
       /*learnOnOneCell*/ false,
       /*seed*/ 42
       );
@@ -170,12 +167,12 @@ namespace {
     tm.basalConnections.createSynapse(segment, previousActiveCells[2], 0.5);
     tm.basalConnections.createSynapse(segment, previousActiveCells[3], 0.5);
 
-    tm.sequenceMemoryCompute(previousActiveColumns);
+    tm.compute(previousActiveColumns);
     ASSERT_FALSE(tm.getActiveCells().empty());
     ASSERT_FALSE(tm.getWinnerCells().empty());
 
     const vector<UInt> zeroColumns = {};
-    tm.sequenceMemoryCompute(zeroColumns);
+    tm.compute(zeroColumns);
 
     EXPECT_TRUE(tm.getActiveCells().empty());
     EXPECT_TRUE(tm.getWinnerCells().empty());
@@ -185,11 +182,10 @@ namespace {
    * All predicted active cells are winner cells, even when learning is
    * disabled.
    */
-  TEST(ExtendedTemporalMemoryTest, PredictedActiveCellsAreAlwaysWinners)
+  TEST(ApicalTiebreakTemporalMemoryTest, PredictedActiveCellsAreAlwaysWinners)
   {
-    ExtendedTemporalMemory tm(
+    ApicalTiebreakSequenceMemory tm(
       /*columnCount*/ 32,
-      /*basalInputSize*/ 32 * 4,
       /*apicalInputSize*/ 0,
       /*cellsPerColumn*/ 4,
       /*activationThreshold*/ 3,
@@ -199,7 +195,8 @@ namespace {
       /*sampleSize*/ 3,
       /*permanenceIncrement*/ 0.10,
       /*permanenceDecrement*/ 0.10,
-      /*predictedSegmentDecrement*/ 0.0,
+      /*basalPredictedSegmentDecrement*/ 0.0,
+      /*apicalPredictedSegmentDecrement*/ 0.0,
       /*learnOnOneCell*/ false,
       /*seed*/ 42
       );
@@ -221,8 +218,8 @@ namespace {
     tm.basalConnections.createSynapse(activeSegment2, previousActiveCells[1], 0.5);
     tm.basalConnections.createSynapse(activeSegment2, previousActiveCells[2], 0.5);
 
-    tm.sequenceMemoryCompute(previousActiveColumns, {}, {}, false);
-    tm.sequenceMemoryCompute(activeColumns, {}, {}, false);
+    tm.compute(previousActiveColumns, {}, {}, false);
+    tm.compute(activeColumns, {}, {}, false);
 
     EXPECT_EQ(expectedWinnerCells, tm.getWinnerCells());
   }
@@ -231,11 +228,10 @@ namespace {
    * One cell in each bursting column is a winner cell, even when learning is
    * disabled.
    */
-  TEST(ExtendedTemporalMemoryTest, ChooseOneWinnerCellInBurstingColumn)
+  TEST(ApicalTiebreakTemporalMemoryTest, ChooseOneWinnerCellInBurstingColumn)
   {
-    ExtendedTemporalMemory tm(
+    ApicalTiebreakSequenceMemory tm(
       /*columnCount*/ 32,
-      /*basalInputSize*/ 32 * 4,
       /*apicalInputSize*/ 0,
       /*cellsPerColumn*/ 4,
       /*activationThreshold*/ 3,
@@ -245,7 +241,8 @@ namespace {
       /*sampleSize*/ 3,
       /*permanenceIncrement*/ 0.10,
       /*permanenceDecrement*/ 0.10,
-      /*predictedSegmentDecrement*/ 0.0,
+      /*basalPredictedSegmentDecrement*/ 0.0,
+      /*apicalPredictedSegmentDecrement*/ 0.0,
       /*learnOnOneCell*/ false,
       /*seed*/ 42
       );
@@ -253,7 +250,7 @@ namespace {
     const vector<UInt> activeColumns = {0};
     const set<CellIdx> burstingCells = {0, 1, 2, 3};
 
-    tm.sequenceMemoryCompute(activeColumns, {}, {}, false);
+    tm.compute(activeColumns, {}, {}, false);
 
     vector<CellIdx> winnerCells = tm.getWinnerCells();
     ASSERT_EQ(1, winnerCells.size());
@@ -264,11 +261,10 @@ namespace {
    * Active segments on predicted active cells should be reinforced. Active
    * synapses should be reinforced, inactive synapses should be punished.
    */
-  TEST(ExtendedTemporalMemoryTest, ReinforceCorrectlyActiveSegments)
+  TEST(ApicalTiebreakTemporalMemoryTest, ReinforceCorrectlyActiveSegments)
   {
-    ExtendedTemporalMemory tm(
+    ApicalTiebreakSequenceMemory tm(
       /*columnCount*/ 32,
-      /*basalInputSize*/ 32 * 4,
       /*apicalInputSize*/ 0,
       /*cellsPerColumn*/ 4,
       /*activationThreshold*/ 3,
@@ -278,7 +274,8 @@ namespace {
       /*sampleSize*/ 4,
       /*permanenceIncrement*/ 0.10,
       /*permanenceDecrement*/ 0.08,
-      /*predictedSegmentDecrement*/ 0.02,
+      /*basalPredictedSegmentDecrement*/ 0.02,
+      /*apicalPredictedSegmentDecrement*/ 0.0,
       /*learnOnOneCell*/ false,
       /*seed*/ 42
       );
@@ -299,8 +296,8 @@ namespace {
     Synapse inactiveSynapse =
       tm.basalConnections.createSynapse(activeSegment, 81, 0.5);
 
-    tm.sequenceMemoryCompute(previousActiveColumns);
-    tm.sequenceMemoryCompute(activeColumns);
+    tm.compute(previousActiveColumns);
+    tm.compute(activeColumns);
 
     EXPECT_NEAR(0.6, tm.basalConnections.dataForSynapse(activeSynapse1).permanence,
                 EPSILON);
@@ -316,11 +313,10 @@ namespace {
    * The best matching segment in a bursting column should be reinforced. Active
    * synapses should be strengthened, and inactive synapses should be weakened.
    */
-  TEST(ExtendedTemporalMemoryTest, ReinforceSelectedMatchingSegmentInBurstingColumn)
+  TEST(ApicalTiebreakTemporalMemoryTest, ReinforceSelectedMatchingSegmentInBurstingColumn)
   {
-    ExtendedTemporalMemory tm(
+    ApicalTiebreakSequenceMemory tm(
       /*columnCount*/ 32,
-      /*basalInputSize*/ 32 * 4,
       /*apicalInputSize*/ 0,
       /*cellsPerColumn*/ 4,
       /*activationThreshold*/ 3,
@@ -330,7 +326,8 @@ namespace {
       /*sampleSize*/ 3,
       /*permanenceIncrement*/ 0.10,
       /*permanenceDecrement*/ 0.08,
-      /*predictedSegmentDecrement*/ 0.0,
+      /*basalPredictedSegmentDecrement*/ 0.0,
+      /*apicalPredictedSegmentDecrement*/ 0.0,
       /*learnOnOneCell*/ false,
       /*seed*/ 42
       );
@@ -365,8 +362,8 @@ namespace {
     tm.basalConnections.createSynapse(otherMatchingSegment,
                                       81, 0.3);
 
-    tm.sequenceMemoryCompute(previousActiveColumns);
-    tm.sequenceMemoryCompute(activeColumns);
+    tm.compute(previousActiveColumns);
+    tm.compute(activeColumns);
 
     EXPECT_NEAR(0.4, tm.basalConnections.dataForSynapse(activeSynapse1).permanence,
                 EPSILON);
@@ -382,11 +379,10 @@ namespace {
    * When a column bursts, don't reward or punish matching-but-not-selected
    * segments.
    */
-  TEST(ExtendedTemporalMemoryTest, NoChangeToNonselectedMatchingSegmentsInBurstingColumn)
+  TEST(ApicalTiebreakTemporalMemoryTest, NoChangeToNonselectedMatchingSegmentsInBurstingColumn)
   {
-    ExtendedTemporalMemory tm(
+    ApicalTiebreakSequenceMemory tm(
       /*columnCount*/ 32,
-      /*basalInputSize*/ 32 * 4,
       /*apicalInputSize*/ 0,
       /*cellsPerColumn*/ 4,
       /*activationThreshold*/ 3,
@@ -396,7 +392,8 @@ namespace {
       /*sampleSize*/ 3,
       /*permanenceIncrement*/ 0.10,
       /*permanenceDecrement*/ 0.08,
-      /*predictedSegmentDecrement*/ 0.0,
+      /*basalPredictedSegmentDecrement*/ 0.0,
+      /*apicalPredictedSegmentDecrement*/ 0.0,
       /*learnOnOneCell*/ false,
       /*seed*/ 42
       );
@@ -429,8 +426,8 @@ namespace {
       tm.basalConnections.createSynapse(otherMatchingSegment,
                                         81, 0.3);
 
-    tm.sequenceMemoryCompute(previousActiveColumns);
-    tm.sequenceMemoryCompute(activeColumns);
+    tm.compute(previousActiveColumns);
+    tm.compute(activeColumns);
 
     EXPECT_NEAR(0.3, tm.basalConnections.dataForSynapse(activeSynapse1).permanence,
                 EPSILON);
@@ -444,11 +441,10 @@ namespace {
    * When a predicted column is activated, don't reward or punish
    * matching-but-not-active segments anywhere in the column.
    */
-  TEST(ExtendedTemporalMemoryTest, NoChangeToMatchingSegmentsInPredictedActiveColumn)
+  TEST(ApicalTiebreakTemporalMemoryTest, NoChangeToMatchingSegmentsInPredictedActiveColumn)
   {
-    ExtendedTemporalMemory tm(
+    ApicalTiebreakSequenceMemory tm(
       /*columnCount*/ 32,
-      /*basalInputSize*/ 32 * 4,
       /*apicalInputSize*/ 0,
       /*cellsPerColumn*/ 4,
       /*activationThreshold*/ 3,
@@ -458,7 +454,8 @@ namespace {
       /*sampleSize*/ 3,
       /*permanenceIncrement*/ 0.10,
       /*permanenceDecrement*/ 0.10,
-      /*predictedSegmentDecrement*/ 0.0,
+      /*basalPredictedSegmentDecrement*/ 0.0,
+      /*apicalPredictedSegmentDecrement*/ 0.0,
       /*learnOnOneCell*/ false,
       /*seed*/ 42
       );
@@ -494,8 +491,8 @@ namespace {
       tm.basalConnections.createSynapse(matchingSegmentOnOtherCell,
                                         previousActiveCells[1], 0.3);
 
-    tm.sequenceMemoryCompute(previousActiveColumns);
-    tm.sequenceMemoryCompute(activeColumns);
+    tm.compute(previousActiveColumns);
+    tm.compute(activeColumns);
     ASSERT_EQ(expectedActiveCells, tm.getPredictedCells());
 
     EXPECT_NEAR(0.3, tm.basalConnections.dataForSynapse(synapse1).permanence,
@@ -512,11 +509,10 @@ namespace {
    * When growing a new segment, if there are no previous winner cells, don't
    * even grow the segment. It will never match.
    */
-  TEST(ExtendedTemporalMemoryTest, NoNewSegmentIfNotEnoughWinnerCells)
+  TEST(ApicalTiebreakTemporalMemoryTest, NoNewSegmentIfNotEnoughWinnerCells)
   {
-    ExtendedTemporalMemory tm(
+    ApicalTiebreakSequenceMemory tm(
       /*columnCount*/ 32,
-      /*basalInputSize*/ 32 * 4,
       /*apicalInputSize*/ 0,
       /*cellsPerColumn*/ 4,
       /*activationThreshold*/ 3,
@@ -526,7 +522,8 @@ namespace {
       /*sampleSize*/ 2,
       /*permanenceIncrement*/ 0.10,
       /*permanenceDecrement*/ 0.10,
-      /*predictedSegmentDecrement*/ 0.0,
+      /*basalPredictedSegmentDecrement*/ 0.0,
+      /*apicalPredictedSegmentDecrement*/ 0.0,
       /*learnOnOneCell*/ false,
       /*seed*/ 42
       );
@@ -534,8 +531,8 @@ namespace {
     const vector<UInt> zeroColumns = {};
     const vector<UInt> activeColumns = {0};
 
-    tm.sequenceMemoryCompute(zeroColumns);
-    tm.sequenceMemoryCompute(activeColumns);
+    tm.compute(zeroColumns);
+    tm.compute(activeColumns);
 
     EXPECT_EQ(0, tm.basalConnections.numSegments());
   }
@@ -544,11 +541,10 @@ namespace {
    * When growing a new segment, if the number of previous winner cells is above
    * sampleSize, grow sampleSize synapses.
    */
-  TEST(ExtendedTemporalMemoryTest, NewSegmentAddSynapsesToSubsetOfWinnerCells)
+  TEST(ApicalTiebreakTemporalMemoryTest, NewSegmentAddSynapsesToSubsetOfWinnerCells)
   {
-    ExtendedTemporalMemory tm(
+    ApicalTiebreakSequenceMemory tm(
       /*columnCount*/ 32,
-      /*basalInputSize*/ 32 * 4,
       /*apicalInputSize*/ 0,
       /*cellsPerColumn*/ 4,
       /*activationThreshold*/ 3,
@@ -558,7 +554,8 @@ namespace {
       /*sampleSize*/ 2,
       /*permanenceIncrement*/ 0.10,
       /*permanenceDecrement*/ 0.10,
-      /*predictedSegmentDecrement*/ 0.0,
+      /*basalPredictedSegmentDecrement*/ 0.0,
+      /*apicalPredictedSegmentDecrement*/ 0.0,
       /*learnOnOneCell*/ false,
       /*seed*/ 42
       );
@@ -566,12 +563,12 @@ namespace {
     const vector<UInt> previousActiveColumns= {0, 1, 2};
     const vector<UInt> activeColumns = {4};
 
-    tm.sequenceMemoryCompute(previousActiveColumns);
+    tm.compute(previousActiveColumns);
 
     vector<CellIdx> prevWinnerCells = tm.getWinnerCells();
     ASSERT_EQ(3, prevWinnerCells.size());
 
-    tm.sequenceMemoryCompute(activeColumns);
+    tm.compute(activeColumns);
 
     vector<CellIdx> winnerCells = tm.getWinnerCells();
     ASSERT_EQ(1, winnerCells.size());
@@ -594,11 +591,10 @@ namespace {
    * When growing a new segment, if the number of previous winner cells is below
    * sampleSize, grow synapses to all of the previous winner cells.
    */
-  TEST(ExtendedTemporalMemoryTest, NewSegmentAddSynapsesToAllWinnerCells)
+  TEST(ApicalTiebreakTemporalMemoryTest, NewSegmentAddSynapsesToAllWinnerCells)
   {
-    ExtendedTemporalMemory tm(
+    ApicalTiebreakSequenceMemory tm(
       /*columnCount*/ 32,
-      /*basalInputSize*/ 32 * 4,
       /*apicalInputSize*/ 0,
       /*cellsPerColumn*/ 4,
       /*activationThreshold*/ 3,
@@ -608,7 +604,8 @@ namespace {
       /*sampleSize*/ 4,
       /*permanenceIncrement*/ 0.10,
       /*permanenceDecrement*/ 0.10,
-      /*predictedSegmentDecrement*/ 0.0,
+      /*basalPredictedSegmentDecrement*/ 0.0,
+      /*apicalPredictedSegmentDecrement*/ 0.0,
       /*learnOnOneCell*/ false,
       /*seed*/ 42
       );
@@ -616,12 +613,12 @@ namespace {
     const vector<UInt> previousActiveColumns = {0, 1, 2};
     const vector<UInt> activeColumns = {4};
 
-    tm.sequenceMemoryCompute(previousActiveColumns);
+    tm.compute(previousActiveColumns);
 
     vector<CellIdx> prevWinnerCells = tm.getWinnerCells();
     ASSERT_EQ(3, prevWinnerCells.size());
 
-    tm.sequenceMemoryCompute(activeColumns);
+    tm.compute(activeColumns);
 
     vector<CellIdx> winnerCells = tm.getWinnerCells();
     ASSERT_EQ(1, winnerCells.size());
@@ -646,11 +643,10 @@ namespace {
    * synapses on the segment should be sampleSize, assuming there are
    * enough previous winner cells available to connect to.
    */
-  TEST(ExtendedTemporalMemoryTest, MatchingSegmentAddSynapsesToSubsetOfWinnerCells)
+  TEST(ApicalTiebreakTemporalMemoryTest, MatchingSegmentAddSynapsesToSubsetOfWinnerCells)
   {
-    ExtendedTemporalMemory tm(
+    ApicalTiebreakSequenceMemory tm(
       /*columnCount*/ 32,
-      /*basalInputSize*/ 32 * 1,
       /*apicalInputSize*/ 0,
       /*cellsPerColumn*/ 1,
       /*activationThreshold*/ 3,
@@ -660,7 +656,8 @@ namespace {
       /*sampleSize*/ 3,
       /*permanenceIncrement*/ 0.10,
       /*permanenceDecrement*/ 0.10,
-      /*predictedSegmentDecrement*/ 0.0,
+      /*basalPredictedSegmentDecrement*/ 0.0,
+      /*apicalPredictedSegmentDecrement*/ 0.0,
       /*learnOnOneCell*/ false,
       /*seed*/ 42
       );
@@ -673,11 +670,11 @@ namespace {
     Segment matchingSegment = tm.createBasalSegment(4);
     tm.basalConnections.createSynapse(matchingSegment, 0, 0.5);
 
-    tm.sequenceMemoryCompute(previousActiveColumns);
+    tm.compute(previousActiveColumns);
 
     ASSERT_EQ(prevWinnerCells, tm.getWinnerCells());
 
-    tm.sequenceMemoryCompute(activeColumns);
+    tm.compute(activeColumns);
 
     vector<Synapse> synapses = tm.basalConnections.synapsesForSegment(matchingSegment);
     ASSERT_EQ(3, synapses.size());
@@ -696,11 +693,10 @@ namespace {
    * winner cells is lower than (sampleSize - nActiveSynapsesOnSegment),
    * grow synapses to all the previous winner cells.
    */
-  TEST(ExtendedTemporalMemoryTest, MatchingSegmentAddSynapsesToAllWinnerCells)
+  TEST(ApicalTiebreakTemporalMemoryTest, MatchingSegmentAddSynapsesToAllWinnerCells)
   {
-    ExtendedTemporalMemory tm(
+    ApicalTiebreakSequenceMemory tm(
       /*columnCount*/ 32,
-      /*basalInputSize*/ 32 * 1,
       /*apicalInputSize*/ 0,
       /*cellsPerColumn*/ 1,
       /*activationThreshold*/ 3,
@@ -710,7 +706,8 @@ namespace {
       /*sampleSize*/ 3,
       /*permanenceIncrement*/ 0.10,
       /*permanenceDecrement*/ 0.10,
-      /*predictedSegmentDecrement*/ 0.0,
+      /*basalPredictedSegmentDecrement*/ 0.0,
+      /*apicalPredictedSegmentDecrement*/ 0.0,
       /*learnOnOneCell*/ false,
       /*seed*/ 42
       );
@@ -723,11 +720,11 @@ namespace {
     Segment matchingSegment = tm.createBasalSegment(4);
     tm.basalConnections.createSynapse(matchingSegment, 0, 0.5);
 
-    tm.sequenceMemoryCompute(previousActiveColumns);
+    tm.compute(previousActiveColumns);
 
     ASSERT_EQ(prevWinnerCells, tm.getWinnerCells());
 
-    tm.sequenceMemoryCompute(activeColumns);
+    tm.compute(activeColumns);
 
     vector<Synapse> synapses = tm.basalConnections.synapsesForSegment(matchingSegment);
     ASSERT_EQ(2, synapses.size());
@@ -743,11 +740,10 @@ namespace {
    * The number of grown synapses is calculated from the "matching segment"
    * overlap, not the "active segment" overlap.
    */
-  TEST(ExtendedTemporalMemoryTest, ActiveSegmentGrowSynapsesAccordingToPotentialOverlap)
+  TEST(ApicalTiebreakTemporalMemoryTest, ActiveSegmentGrowSynapsesAccordingToPotentialOverlap)
   {
-    ExtendedTemporalMemory tm(
+    ApicalTiebreakSequenceMemory tm(
       /*columnCount*/ 32,
-      /*basalInputSize*/ 32 * 1,
       /*apicalInputSize*/ 0,
       /*cellsPerColumn*/ 1,
       /*activationThreshold*/ 2,
@@ -757,7 +753,8 @@ namespace {
       /*sampleSize*/ 4,
       /*permanenceIncrement*/ 0.10,
       /*permanenceDecrement*/ 0.10,
-      /*predictedSegmentDecrement*/ 0.0,
+      /*basalPredictedSegmentDecrement*/ 0.0,
+      /*apicalPredictedSegmentDecrement*/ 0.0,
       /*learnOnOneCell*/ false,
       /*seed*/ 42
       );
@@ -772,11 +769,11 @@ namespace {
     tm.basalConnections.createSynapse(activeSegment, 1, 0.5);
     tm.basalConnections.createSynapse(activeSegment, 2, 0.2);
 
-    tm.sequenceMemoryCompute(previousActiveColumns);
+    tm.compute(previousActiveColumns);
 
     ASSERT_EQ(prevWinnerCells, tm.getWinnerCells());
 
-    tm.sequenceMemoryCompute(activeColumns);
+    tm.compute(activeColumns);
 
     vector<Synapse> synapses = tm.basalConnections.synapsesForSegment(activeSegment);
 
@@ -792,11 +789,10 @@ namespace {
    * When a synapse is punished for contributing to a wrong prediction, if its
    * permanence falls to 0 it should be destroyed.
    */
-  TEST(ExtendedTemporalMemoryTest, DestroyWeakSynapseOnWrongPrediction)
+  TEST(ApicalTiebreakTemporalMemoryTest, DestroyWeakSynapseOnWrongPrediction)
   {
-    ExtendedTemporalMemory tm(
+    ApicalTiebreakSequenceMemory tm(
       /*columnCount*/ 32,
-      /*basalInputSize*/ 32 * 4,
       /*apicalInputSize*/ 0,
       /*cellsPerColumn*/ 4,
       /*activationThreshold*/ 3,
@@ -806,7 +802,8 @@ namespace {
       /*sampleSize*/ 4,
       /*permanenceIncrement*/ 0.10,
       /*permanenceDecrement*/ 0.10,
-      /*predictedSegmentDecrement*/ 0.02,
+      /*basalPredictedSegmentDecrement*/ 0.02,
+      /*apicalPredictedSegmentDecrement*/ 0.0,
       /*learnOnOneCell*/ false,
       /*seed*/ 42
       );
@@ -824,8 +821,8 @@ namespace {
     // Weak synapse.
     tm.basalConnections.createSynapse(activeSegment, previousActiveCells[3], 0.015);
 
-    tm.sequenceMemoryCompute(previousActiveColumns);
-    tm.sequenceMemoryCompute(activeColumns);
+    tm.compute(previousActiveColumns);
+    tm.compute(activeColumns);
 
     EXPECT_EQ(3, tm.basalConnections.numSynapses(activeSegment));
   }
@@ -834,11 +831,10 @@ namespace {
    * When a synapse is punished for not contributing to a right prediction, if
    * its permanence falls to 0 it should be destroyed.
    */
-  TEST(ExtendedTemporalMemoryTest, DestroyWeakSynapseOnActiveReinforce)
+  TEST(ApicalTiebreakTemporalMemoryTest, DestroyWeakSynapseOnActiveReinforce)
   {
-    ExtendedTemporalMemory tm(
+    ApicalTiebreakSequenceMemory tm(
       /*columnCount*/ 32,
-      /*basalInputSize*/ 32 * 4,
       /*apicalInputSize*/ 0,
       /*cellsPerColumn*/ 4,
       /*activationThreshold*/ 3,
@@ -848,7 +844,8 @@ namespace {
       /*sampleSize*/ 4,
       /*permanenceIncrement*/ 0.10,
       /*permanenceDecrement*/ 0.10,
-      /*predictedSegmentDecrement*/ 0.02,
+      /*basalPredictedSegmentDecrement*/ 0.02,
+      /*apicalPredictedSegmentDecrement*/ 0.0,
       /*learnOnOneCell*/ false,
       /*seed*/ 42
       );
@@ -866,8 +863,8 @@ namespace {
     // Weak inactive synapse.
     tm.basalConnections.createSynapse(activeSegment, 81, 0.09);
 
-    tm.sequenceMemoryCompute(previousActiveColumns);
-    tm.sequenceMemoryCompute(activeColumns);
+    tm.compute(previousActiveColumns);
+    tm.compute(activeColumns);
 
     EXPECT_EQ(3, tm.basalConnections.numSynapses(activeSegment));
   }
@@ -876,11 +873,10 @@ namespace {
    * When a segment adds synapses and it runs over maxSynapsesPerSegment, it
    * should make room by destroying synapses with the lowest permanence.
    */
-  TEST(ExtendedTemporalMemoryTest, RecycleWeakestSynapseToMakeRoomForNewSynapse)
+  TEST(ApicalTiebreakTemporalMemoryTest, RecycleWeakestSynapseToMakeRoomForNewSynapse)
   {
-    ExtendedTemporalMemory tm(
+    ApicalTiebreakSequenceMemory tm(
       /*columnCount*/ 32,
-      /*basalInputSize*/ 32 * 1,
       /*apicalInputSize*/ 0,
       /*cellsPerColumn*/ 1,
       /*activationThreshold*/ 3,
@@ -890,7 +886,8 @@ namespace {
       /*sampleSize*/ 3,
       /*permanenceIncrement*/ 0.02,
       /*permanenceDecrement*/ 0.02,
-      /*predictedSegmentDecrement*/ 0.0,
+      /*basalPredictedSegmentDecrement*/ 0.0,
+      /*apicalPredictedSegmentDecrement*/ 0.0,
       /*learnOnOneCell*/ false,
       /*seed*/ 42,
       /*maxSegmentsPerCell*/ 255,
@@ -915,12 +912,12 @@ namespace {
     tm.basalConnections.createSynapse(matchingSegment, 31, 0.6);
 
     // Activate a synapse on the segment, making it "matching".
-    tm.sequenceMemoryCompute(previousActiveColumns);
+    tm.compute(previousActiveColumns);
 
     ASSERT_EQ(prevWinnerCells, tm.getWinnerCells());
 
     // Now mark the segment as "correct" by activating its cell.
-    tm.sequenceMemoryCompute(activeColumns);
+    tm.compute(activeColumns);
 
     // There should now be 3 synapses, and none of them should be to cell 0.
     const vector<Synapse>& synapses =
@@ -942,11 +939,10 @@ namespace {
    * When a cell adds a segment and it runs over maxSegmentsPerCell, it should
    * make room by destroying the least recently active segment.
    */
-  TEST(ExtendedTemporalMemoryTest, RecycleLeastRecentlyActiveSegmentToMakeRoomForNewSegment)
+  TEST(ApicalTiebreakTemporalMemoryTest, RecycleLeastRecentlyActiveSegmentToMakeRoomForNewSegment)
   {
-    ExtendedTemporalMemory tm(
+    ApicalTiebreakSequenceMemory tm(
       /*columnCount*/ 32,
-      /*basalInputSize*/ 32 * 1,
       /*apicalInputSize*/ 0,
       /*cellsPerColumn*/ 1,
       /*activationThreshold*/ 3,
@@ -956,7 +952,8 @@ namespace {
       /*sampleSize*/ 3,
       /*permanenceIncrement*/ 0.02,
       /*permanenceDecrement*/ 0.02,
-      /*predictedSegmentDecrement*/ 0.0,
+      /*basalPredictedSegmentDecrement*/ 0.0,
+      /*apicalPredictedSegmentDecrement*/ 0.0,
       /*learnOnOneCell*/ false,
       /*seed*/ 42,
       /*maxSegmentsPerCell*/ 2
@@ -967,15 +964,15 @@ namespace {
     const vector<UInt> previousActiveColumns3 = {6, 7, 8};
     const vector<UInt> activeColumns = {9};
 
-    tm.sequenceMemoryCompute(previousActiveColumns1);
-    tm.sequenceMemoryCompute(activeColumns);
+    tm.compute(previousActiveColumns1);
+    tm.compute(activeColumns);
 
     ASSERT_EQ(1, tm.basalConnections.numSegments(9));
     Segment oldestSegment = tm.basalConnections.segmentsForCell(9)[0];
 
     tm.reset();
-    tm.sequenceMemoryCompute(previousActiveColumns2);
-    tm.sequenceMemoryCompute(activeColumns);
+    tm.compute(previousActiveColumns2);
+    tm.compute(activeColumns);
 
     ASSERT_EQ(2, tm.basalConnections.numSegments(9));
 
@@ -987,8 +984,8 @@ namespace {
     }
 
     tm.reset();
-    tm.sequenceMemoryCompute(previousActiveColumns3);
-    tm.sequenceMemoryCompute(activeColumns);
+    tm.compute(previousActiveColumns3);
+    tm.compute(activeColumns);
 
     ASSERT_EQ(2, tm.basalConnections.numSegments(9));
 
@@ -1018,11 +1015,10 @@ namespace {
    * When a segment's number of synapses falls to 0, the segment should be
    * destroyed.
    */
-  TEST(ExtendedTemporalMemoryTest, DestroySegmentsWithTooFewSynapsesToBeMatching)
+  TEST(ApicalTiebreakTemporalMemoryTest, DestroySegmentsWithTooFewSynapsesToBeMatching)
   {
-    ExtendedTemporalMemory tm(
+    ApicalTiebreakSequenceMemory tm(
       /*columnCount*/ 32,
-      /*basalInputSize*/ 32 * 4,
       /*apicalInputSize*/ 0,
       /*cellsPerColumn*/ 4,
       /*activationThreshold*/ 3,
@@ -1032,7 +1028,8 @@ namespace {
       /*sampleSize*/ 4,
       /*permanenceIncrement*/ 0.10,
       /*permanenceDecrement*/ 0.10,
-      /*predictedSegmentDecrement*/ 0.02,
+      /*basalPredictedSegmentDecrement*/ 0.02,
+      /*apicalPredictedSegmentDecrement*/ 0.0,
       /*learnOnOneCell*/ false,
       /*seed*/ 42
       );
@@ -1048,8 +1045,8 @@ namespace {
     tm.basalConnections.createSynapse(matchingSegment, previousActiveCells[2], 0.015);
     tm.basalConnections.createSynapse(matchingSegment, previousActiveCells[3], 0.015);
 
-    tm.sequenceMemoryCompute(previousActiveColumns);
-    tm.sequenceMemoryCompute(activeColumns);
+    tm.compute(previousActiveColumns);
+    tm.compute(activeColumns);
 
     EXPECT_EQ(0, tm.basalConnections.numSegments(expectedActiveCell));
   }
@@ -1063,11 +1060,10 @@ namespace {
    *  - Use cells before, between, and after the active columns.
    *  - Use segments that are matching-but-not-active and matching-and-active.
    */
-  TEST(ExtendedTemporalMemoryTest, PunishMatchingSegmentsInInactiveColumns)
+  TEST(ApicalTiebreakTemporalMemoryTest, PunishMatchingSegmentsInInactiveColumns)
   {
-    ExtendedTemporalMemory tm(
+    ApicalTiebreakSequenceMemory tm(
       /*columnCount*/ 32,
-      /*basalInputSize*/ 32 * 4,
       /*apicalInputSize*/ 0,
       /*cellsPerColumn*/ 4,
       /*activationThreshold*/ 3,
@@ -1077,7 +1073,8 @@ namespace {
       /*sampleSize*/ 4,
       /*permanenceIncrement*/ 0.10,
       /*permanenceDecrement*/ 0.10,
-      /*predictedSegmentDecrement*/ 0.02,
+      /*basalPredictedSegmentDecrement*/ 0.02,
+      /*apicalPredictedSegmentDecrement*/ 0.0,
       /*learnOnOneCell*/ false,
       /*seed*/ 42
       );
@@ -1105,8 +1102,8 @@ namespace {
     Synapse inactiveSynapse2 =
       tm.basalConnections.createSynapse(matchingSegment, previousInactiveCell, 0.5);
 
-    tm.sequenceMemoryCompute(previousActiveColumns);
-    tm.sequenceMemoryCompute(activeColumns);
+    tm.compute(previousActiveColumns);
+    tm.compute(activeColumns);
 
     EXPECT_NEAR(0.48, tm.basalConnections.dataForSynapse(activeSynapse1).permanence,
                 EPSILON);
@@ -1128,15 +1125,14 @@ namespace {
    * In a bursting column with no matching segments, a segment should be added
    * to the cell with the fewest segments. When there's a tie, choose randomly.
    */
-  TEST(ExtendedTemporalMemoryTest, AddSegmentToCellWithFewestSegments)
+  TEST(ApicalTiebreakTemporalMemoryTest, AddSegmentToCellWithFewestSegments)
   {
     bool grewOnCell1 = false;
     bool grewOnCell2 = false;
     for (UInt seed = 0; seed < 100; seed++)
     {
-      ExtendedTemporalMemory tm(
+      ApicalTiebreakSequenceMemory tm(
         /*columnCount*/ 32,
-        /*basalInputSize*/ 32 * 4,
         /*apicalInputSize*/ 0,
         /*cellsPerColumn*/ 4,
         /*activationThreshold*/ 3,
@@ -1146,7 +1142,8 @@ namespace {
         /*sampleSize*/ 4,
         /*permanenceIncrement*/ 0.10,
         /*permanenceDecrement*/ 0.10,
-        /*predictedSegmentDecrement*/ 0.02,
+        /*basalPredictedSegmentDecrement*/ 0.02,
+        /*apicalPredictedSegmentDecrement*/ 0.0,
         /*learnOnOneCell*/ false,
         /*seed*/ seed
         );
@@ -1164,8 +1161,8 @@ namespace {
       Segment segment2 = tm.createBasalSegment(nonmatchingCells[1]);
       tm.basalConnections.createSynapse(segment2, previousActiveCells[1], 0.5);
 
-      tm.sequenceMemoryCompute(previousActiveColumns);
-      tm.sequenceMemoryCompute(activeColumns);
+      tm.compute(previousActiveColumns);
+      tm.compute(activeColumns);
 
       ASSERT_EQ(activeCells, tm.getActiveCells());
 
@@ -1217,11 +1214,10 @@ namespace {
    * synapses, don't grow new synapses. This test is specifically aimed at
    * unexpected behavior with negative numbers and unsigned integers.
    */
-  TEST(ExtendedTemporalMemoryTest, SampleSizeOverflow)
+  TEST(ApicalTiebreakTemporalMemoryTest, SampleSizeOverflow)
   {
-    ExtendedTemporalMemory tm(
+    ApicalTiebreakSequenceMemory tm(
       /*columnCount*/ 32,
-      /*basalInputSize*/ 32 * 4,
       /*apicalInputSize*/ 0,
       /*cellsPerColumn*/ 4,
       /*activationThreshold*/ 3,
@@ -1231,7 +1227,8 @@ namespace {
       /*sampleSize*/ 4,
       /*permanenceIncrement*/ 0.10,
       /*permanenceDecrement*/ 0.10,
-      /*predictedSegmentDecrement*/ 0.02,
+      /*basalPredictedSegmentDecrement*/ 0.02,
+      /*apicalPredictedSegmentDecrement*/ 0.0,
       /*learnOnOneCell*/ false,
       /*seed*/ 42
       );
@@ -1247,12 +1244,12 @@ namespace {
     tm.basalConnections.createSynapse(segment, 7, 0.2);
 
     const vector<UInt> previousActiveColumns = {0, 1, 3, 4};
-    tm.sequenceMemoryCompute(previousActiveColumns);
-
-    const vector<UInt> activeColumns = {2};
-    tm.sequenceMemoryCompute(activeColumns);
+    tm.compute(previousActiveColumns);
 
     ASSERT_EQ(1, tm.getMatchingBasalSegments().size());
+
+    const vector<UInt> activeColumns = {2};
+    tm.compute(activeColumns);
 
     // Make sure the segment has learned.
     ASSERT_NEAR(0.3, tm.basalConnections.dataForSynapse(sampleSynapse).permanence,
@@ -1266,11 +1263,10 @@ namespace {
    * inactive columns, and nonpredicted active columns. The connections should
    * not change.
    */
-  TEST(ExtendedTemporalMemoryTest, ConnectionsNeverChangeWhenLearningDisabled)
+  TEST(ApicalTiebreakTemporalMemoryTest, ConnectionsNeverChangeWhenLearningDisabled)
   {
-    ExtendedTemporalMemory tm(
+    ApicalTiebreakSequenceMemory tm(
       /*columnCount*/ 32,
-      /*basalInputSize*/ 32 * 4,
       /*apicalInputSize*/ 0,
       /*cellsPerColumn*/ 4,
       /*activationThreshold*/ 3,
@@ -1280,7 +1276,8 @@ namespace {
       /*sampleSize*/ 4,
       /*permanenceIncrement*/ 0.10,
       /*permanenceDecrement*/ 0.10,
-      /*predictedSegmentDecrement*/ 0.02,
+      /*basalPredictedSegmentDecrement*/ 0.02,
+      /*apicalPredictedSegmentDecrement*/ 0.0,
       /*learnOnOneCell*/ false,
       /*seed*/ 42
       );
@@ -1313,22 +1310,20 @@ namespace {
 
     Connections before = tm.basalConnections;
 
-    tm.sequenceMemoryCompute(previousActiveColumns,
+    tm.compute(previousActiveColumns,
                              {}, {},
                              false);
-    tm.sequenceMemoryCompute(activeColumns,
+    tm.compute(activeColumns,
                              {}, {},
                              false);
 
     EXPECT_EQ(before, tm.basalConnections);
   }
 
-  TEST(ExtendedTemporalMemoryTest, testColumnForCell)
+  TEST(ApicalTiebreakTemporalMemoryTest, testColumnForCell)
   {
-    ExtendedTemporalMemory tm;
-    tm.initialize(
+    ApicalTiebreakSequenceMemory tm(
       /*columnCount*/ 2048,
-      /*basalInputSize*/ 2048 * 5,
       /*apicalInputSize*/ 0,
       /*cellsPerColumn*/ 5);
 
@@ -1338,12 +1333,10 @@ namespace {
     ASSERT_EQ(2047, tm.columnForCell(10239));
   }
 
-  TEST(ExtendedTemporalMemoryTest, testColumnForCellInvalidCell)
+  TEST(ApicalTiebreakTemporalMemoryTest, testColumnForCellInvalidCell)
   {
-    ExtendedTemporalMemory tm;
-    tm.initialize(
+    ApicalTiebreakSequenceMemory tm(
       /*columnCount*/ 4096,
-      /*basalInputSize*/ 4096 * 4,
       /*apicalInputSize*/ 0,
       /*cellsPerColumn*/ 4);
 
@@ -1352,12 +1345,10 @@ namespace {
     EXPECT_THROW(tm.columnForCell(-1), std::exception);
   }
 
-  TEST(ExtendedTemporalMemoryTest, testNumberOfColumns)
+  TEST(ApicalTiebreakTemporalMemoryTest, testNumberOfColumns)
   {
-    ExtendedTemporalMemory tm;
-    tm.initialize(
+    ApicalTiebreakSequenceMemory tm(
       /*columnCount*/ 2048,
-      /*basalInputSize*/ 2048 * 32,
       /*apicalInputSize*/ 0,
       /*cellsPerColumn*/ 32);
 
@@ -1365,12 +1356,10 @@ namespace {
     ASSERT_EQ(numOfColumns, 2048);
   }
 
-  TEST(ExtendedTemporalMemoryTest, testNumberOfCells)
+  TEST(ApicalTiebreakTemporalMemoryTest, testNumberOfCells)
   {
-    ExtendedTemporalMemory tm;
-    tm.initialize(
+    ApicalTiebreakSequenceMemory tm(
       /*columnCount*/ 2048,
-      /*basalInputSize*/ 2048 * 32,
       /*apicalInputSize*/ 0,
       /*cellsPerColumn*/ 32);
 
@@ -1378,14 +1367,10 @@ namespace {
     ASSERT_EQ(numberOfCells, 2048 * 32);
   }
 
-  // FIXME: See  https://jira.numenta.com/browse/RES-566
-  TEST(ExtendedTemporalMemoryTest, DISABLED_testWrite)
+  TEST(ApicalTiebreakTemporalMemoryTest, testWrite)
   {
-    ExtendedTemporalMemory tm1, tm2;
-
-    tm1.initialize(
+    ApicalTiebreakSequenceMemory tm1(
       /*columnCount*/ 100,
-      /*basalInputSize*/ 100 * 4,
       /*apicalInputSize*/ 0,
       /*cellsPerColumn*/ 4,
       /*activationThreshold*/ 7,
@@ -1395,7 +1380,8 @@ namespace {
       /*sampleSize*/ 18,
       /*permanenceIncrement*/ 0.23,
       /*permanenceDecrement*/ 0.08,
-      /*predictedSegmentDecrement*/ 0.0,
+      /*basalPredictedSegmentDecrement*/ 0.0,
+      /*apicalPredictedSegmentDecrement*/ 0.0,
       /*learnOnOneCell*/ false,
       /*seed*/ 42);
 
@@ -1416,25 +1402,26 @@ namespace {
     for (UInt i = 0; i < 3; i++)
     {
       for (vector<UInt> pattern : sequence)
-        tm1.sequenceMemoryCompute(pattern);
+        tm1.compute(pattern);
     }
 
     // Write and read back the proto
     stringstream ss;
     tm1.write(ss);
+    ApicalTiebreakSequenceMemory tm2;
     tm2.read(ss);
 
     // Check that the two temporal memory objects have the same attributes
     ASSERT_TRUE(tm1 == tm2);
 
-    tm1.sequenceMemoryCompute(sequence[0]);
-    tm2.sequenceMemoryCompute(sequence[0]);
+    tm1.compute(sequence[0]);
+    tm2.compute(sequence[0]);
     ASSERT_EQ(tm1.getActiveCells(), tm2.getActiveCells());
     ASSERT_EQ(tm1.getWinnerCells(), tm2.getWinnerCells());
     ASSERT_EQ(tm1.basalConnections, tm2.basalConnections);
 
-    tm1.sequenceMemoryCompute(sequence[3]);
-    tm2.sequenceMemoryCompute(sequence[3]);
+    tm1.compute(sequence[3]);
+    tm2.compute(sequence[3]);
     ASSERT_EQ(tm1.getActiveCells(), tm2.getActiveCells());
 
     const vector<Segment> activeSegments1 = tm1.getActiveBasalSegments();
