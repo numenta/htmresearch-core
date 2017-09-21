@@ -11,11 +11,11 @@ Environment:
 
 First, build [nupic.core](https://github.com/numenta/nupic.core).
 
-  mkdir -p $NUPIC_CORE/build/scripts_release
-  cd $NUPIC_CORE/build/scripts_release
-  cmake ../.. -DCMAKE_INSTALL_PREFIX=../release -DCMAKE_BUILD_TYPE=Release -DNUPIC_IWYU=OFF -DNUPIC_TOGGLE_INSTALL=ON -DPY_EXTENSIONS_DIR=$NUPIC_CORE/bindings/py/src/nupic/bindings
-  make -j6
-  make install
+    mkdir -p $NUPIC_CORE/build/scripts_release
+    cd $NUPIC_CORE/build/scripts_release
+    cmake ../.. -DCMAKE_INSTALL_PREFIX=../release -DCMAKE_BUILD_TYPE=Release -DNUPIC_IWYU=OFF -DNUPIC_TOGGLE_INSTALL=ON -DPY_EXTENSIONS_DIR=$NUPIC_CORE/bindings/py/src/nupic/bindings
+    make -j6
+    make install
 
 Then:
 
