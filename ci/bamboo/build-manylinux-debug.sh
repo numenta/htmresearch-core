@@ -25,11 +25,11 @@
 # x86_64 wide-unicode nupic.bindings wheel per PEP-513. See
 # https://github.com/numenta/manylinux.
 #
-# ASUMPTIONS: Expects a pristine nupic.core source tree without any remnant
+# ASUMPTIONS: Expects a pristine htmresearch-core source tree without any remnant
 #             build artifacts from prior build attempts. Otherwise, behavior is
 #             undefined.
 #
-# OUTPUTS: see nupic.core/ci/build-and-test-nupic-bindings.sh
+# OUTPUTS: see htmresearch-core/ci/build-and-test.sh
 
 
 set -o errexit
@@ -43,8 +43,8 @@ source ${DIR}/manylinux-build-env.rc
 # Install the Include What You Use tool used by debug build
 yum install -y iwyu
 
-# Build and test the manylinux wheel; see build-and-test-nupic-bindings.sh for
+# Build and test the manylinux wheel; see build-and-test.sh for
 # destination wheelhouse
 BUILD_TYPE="Debug" \
 WHEEL_PLAT="manylinux1_x86_64" \
-  ${DIR}/../build-and-test-nupic-bindings.sh "$@"
+  ${DIR}/../build-and-test.sh "$@"
