@@ -32,8 +32,8 @@ This script builds and tests the nupic.bindings Python extension.
 In Debug builds, also
   - Turns on the Include What You Use check (assumes iwyu is installed)
 
-ASUMPTION: Expects a pristine nupic.core source tree without any remnant build
-   artifacts from prior build attempts. Otherwise, behavior is undefined.
+ASUMPTION: Expects a pristine htmresearch-core source tree without any remnant 
+   build artifacts from prior build attempts. Otherwise, behavior is undefined.
 
 
 INPUT ENVIRONMENT VARIABLES:
@@ -44,11 +44,11 @@ INPUT ENVIRONMENT VARIABLES:
                leave undefined for all other builds.
 
 OUTPUTS:
-  nupic.bindings wheel: On success, the resulting wheel will be located in the
-                        subdirectory nupic_bindings_wheelhouse of the source
+  htmresearch-core wheel: On success, the resulting wheel will be located in the
+                        subdirectory htmresearch_core_wheelhouse of the source
                         tree's root directory.
 
-  test results: nupic.bindings test results will be located in the subdirectory
+  test results: htmresearch-core test results will be located in the subdirectory
                 test_results of the source tree's root directory with the
                 the following content:
 
@@ -76,48 +76,56 @@ set -o xtrace
 BUILD_TYPE=${BUILD_TYPE-"Release"}
 
 
-NUPIC_CORE_ROOT="$( cd "$( dirname "${BASH_SOURCE[0]}" )/.." && pwd )"
+HTMRESEARCH_CORE_ROOT="$( cd "$( dirname "${BASH_SOURCE[0]}" )/.." && pwd )"
 
-TEST_RESULTS_DIR="${NUPIC_CORE_ROOT}/test_results"
+DEST_WHEELHOUSE="${HTMRESEARCH_CORE_ROOT}/htmresearch_core_wheelhouse"
 
-echo "RUNNING NUPIC BINDINGS BUILD: BUILD_TYPE=${BUILD_TYPE}, " >&2
+TEST_RESULTS_DIR="${HTMRESEARCH_CORE_ROOT}/test_results"
 
-# Install nupic.bindings dependencies; the nupic.core cmake build depends on
-# some of them (e.g., numpy).
+echo "RUNNING HTMRESEARCH-CORE BUILD: BUILD_TYPE=${BUILD_TYPE}, " \
+     "DEST_WHEELHOUSE=${DEST_WHEELHOUSE}" >&2
+
+# Install htmresearch-core dependencies; the htmresearch-core cmake build
+# depends on some of them (e.g., numpy).
 pip install \
     --ignore-installed \
-    -r ${NUPIC_CORE_ROOT}/bindings/py/requirements.txt
+    -r ${HTMRESEARCH_CORE_ROOT}/bindings/py/requirements.txt
 
 #
-# Build nupic.bindings
+# Build htmresearch-core
 #
 
 # NOTE without -p to force build failure upon pre-existing build side-effects
-mkdir ${NUPIC_CORE_ROOT}/build
-mkdir ${NUPIC_CORE_ROOT}/build/scripts
+mkdir ${HTMRESEARCH_CORE_ROOT}/build
+mkdir ${HTMRESEARCH_CORE_ROOT}/build/scripts
 
-cd ${NUPIC_CORE_ROOT}/build/scripts
+cd ${HTMRESEARCH_CORE_ROOT}/build/scripts
 
-# Configure nupic.core build
+# Configure htmresearch-core build
 if [[ "$BUILD_TYPE" == "Debug" ]]; then
-  EXTRA_CMAKE_DEFINITIONS="-DNUPIC_IWYU=ON -DNTA_COV_ENABLED=ON"
+  EXTRA_CMAKE_DEFINITIONS="-DNTA_COV_ENABLED=ON"
+
+  # Only add iwyu for clang builds
+  if [[ $CC == *"clang"* ]]; then
+    EXTRA_CMAKE_DEFINITIONS="-DNUPIC_IWYU=ON ${EXTRA_CMAKE_DEFINITIONS}"
+  fi
 fi
 
-cmake ${NUPIC_CORE_ROOT} \
+cmake ${HTMRESEARCH_CORE_ROOT} \
     -DCMAKE_BUILD_TYPE=${BUILD_TYPE} \
     ${EXTRA_CMAKE_DEFINITIONS} \
-    -DCMAKE_INSTALL_PREFIX=${NUPIC_CORE_ROOT}/build/release \
-    -DPY_EXTENSIONS_DIR=${NUPIC_CORE_ROOT}/bindings/py/src/htmresearch_core
+    -DCMAKE_INSTALL_PREFIX=${HTMRESEARCH_CORE_ROOT}/build/release \
+    -DPY_EXTENSIONS_DIR=${HTMRESEARCH_CORE_ROOT}/bindings/py/src/htmresearch_core
 
-# Build nupic.core
+# Build htmresearch-core
 make install
 
-# Build nupic.bindings python extensions from nupic.core build artifacts
+# Build htmresearch-core python extensions from htmresearch-core build artifacts
 if [[ $WHEEL_PLAT ]]; then
   EXTRA_WHEEL_OPTIONS="--plat-name ${WHEEL_PLAT}"
 fi
 
-cd ${NUPIC_CORE_ROOT}
+cd ${HTMRESEARCH_CORE_ROOT}
 python setup.py bdist_wheel --dist-dir ${DEST_WHEELHOUSE} ${EXTRA_WHEEL_OPTIONS}
 
 
@@ -125,30 +133,17 @@ python setup.py bdist_wheel --dist-dir ${DEST_WHEELHOUSE} ${EXTRA_WHEEL_OPTIONS}
 # Test
 #
 
-# Install nupic.bindings before running c++ tests; py_region_test depends on it
+# Install htmresearch-core before running c++ tests; py_region_test depends on it
 pip install \
     --ignore-installed \
-    ${DEST_WHEELHOUSE}/htmresearch-core-*.whl
+    ${DEST_WHEELHOUSE}/htmresearch_core-*.whl
 
-# Run the nupic.core c++ tests
-cd ${NUPIC_CORE_ROOT}/build/release/bin
-./cpp_region_test
-./py_region_test
-./unit_tests
-
-# These are utilities or demonstration executables so leave out of main build
-# to keep build times down.
-#./connections_performance_test
-#./hello_sp_tp
-#./helloregion
-#./prototest
-
-
-# Run nupic.bindings python tests
 
 mkdir ${TEST_RESULTS_DIR}
-
 cd ${TEST_RESULTS_DIR}    # so that py.test will deposit its artifacts here
 
-# Run tests with pytest options per nupic.core/setup.cfg
-py.test ${NUPIC_CORE_ROOT}/bindings/py/tests
+# Run the htmresearch-core c++ tests
+${HTMRESEARCH_CORE_ROOT}/build/release/bin/unit_tests --gtest_output=xml:unit_tests_report.xml
+
+# Run tests with pytest options per htmresearch-core/setup.cfg
+py.test ${HTMRESEARCH_CORE_ROOT}/bindings/py/tests
