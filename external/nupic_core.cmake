@@ -46,7 +46,16 @@
 
 # nupic.core version to use
 if (NOT NUPIC_CORE_VERSION)
-    file (STRINGS "${CMAKE_SOURCE_DIR}/NUPIC_CORE_VERSION" NUPIC_CORE_VERSION)
+    # Extract nupic.bindings version from "requirements.txt"    
+    file (STRINGS "${CMAKE_SOURCE_DIR}/bindings/py/requirements.txt" REQUIREMENTS_TXT)
+    foreach(NameAndValue ${REQUIREMENTS_TXT})
+      string(REGEX REPLACE "^[ ]+" "" NameAndValue ${NameAndValue})
+      string(REGEX MATCH "^[^=]+" Name ${NameAndValue})
+      string(REPLACE "${Name}==" "" Value ${NameAndValue})
+      if(${Name} MATCHES "nupic.bindings")
+          set(NUPIC_CORE_VERSION "${Value}")
+      endif()
+    endforeach()
 endif(NOT NUPIC_CORE_VERSION)
 
 # Check if we should use local sources or download from the releases site 

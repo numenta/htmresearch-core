@@ -1,12 +1,38 @@
+# ----------------------------------------------------------------------
+# Numenta Platform for Intelligent Computing (NuPIC)
+# Copyright (C) 2017, Numenta, Inc.  Unless you have an agreement
+# with Numenta, Inc., for a separate license for this software code, the
+# following terms and conditions apply:
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU Affero Public License version 3 as
+# published by the Free Software Foundation.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+# See the GNU Affero Public License for more details.
+#
+# You should have received a copy of the GNU Affero Public License
+# along with this program.  If not, see http://www.gnu.org/licenses.
+#
+# http://numenta.org/licenses/
+# ----------------------------------------------------------------------
+
 import os
 import shutil
+import pkg_resources
+
 from setuptools import setup, find_packages
 from distutils.core import Extension
-import pkg_resources
 
 
 PY_BINDINGS = os.path.dirname(os.path.realpath(__file__))
 REPO_DIR = os.path.abspath(os.path.join(PY_BINDINGS, os.pardir, os.pardir))
+DARWIN_PLATFORM = "darwin"
+LINUX_PLATFORM = "linux"
+UNIX_PLATFORMS = [LINUX_PLATFORM, DARWIN_PLATFORM]
+WINDOWS_PLATFORMS = ["windows"]
 
 
 
@@ -92,15 +118,33 @@ if __name__ == "__main__":
     # import namespace "htmresearch_core".
     name="htmresearch-core",
     version=getVersion(),
+    # This distribution contains platform-specific C++ libraries, but they are not
+    # built with distutils. So we must create a dummy Extension object so when we
+    # create a binary file it knows to make it platform-specific.
+    ext_modules=[Extension("htmresearch_core.dummy", sources=["dummy.c"])],
+    install_requires=findRequirements(),
     package_dir = {"": "src"},
     packages=find_packages("src"),
     package_data={
       "htmresearch_core.proto": ["*.capnp"],
       "htmresearch_core": ["*.so", "*.pyd"],
     },
-    # This distribution contains platform-specific C++ libraries, but they are not
-    # built with distutils. So we must create a dummy Extension object so when we
-    # create a binary file it knows to make it platform-specific.
-    ext_modules=[Extension("htmresearch_core.dummy", sources=["dummy.c"])],
-    install_requires=findRequirements()
+    description="Numenta's experimental C++ research code",
+    author="Numenta",
+    author_email="help@numenta.org",
+    url="https://github.com/numenta/htmresearch-core",
+    long_description = "Python bindings for htmresearch-core.",
+    classifiers=[
+      "Programming Language :: Python",
+      "Programming Language :: Python :: 2",
+      "License :: OSI Approved :: GNU Affero General Public License v3 or later (AGPLv3+)",
+      "Operating System :: MacOS :: MacOS X",
+      "Operating System :: POSIX :: Linux",
+      "Operating System :: Microsoft :: Windows",
+      # It has to be "5 - Production/Stable" or else pypi rejects it!
+      "Development Status :: 5 - Production/Stable",
+      "Environment :: Console",
+      "Intended Audience :: Science/Research",
+      "Topic :: Scientific/Engineering :: Artificial Intelligence"
+    ],
   )
