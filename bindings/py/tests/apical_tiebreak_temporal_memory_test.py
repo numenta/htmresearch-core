@@ -26,16 +26,22 @@ import shutil
 import tempfile
 import unittest
 
-import capnp
+try:
+  import capnp
+except ImportError:
+  capnp = None
+else:
+  from htmresearch_core.proto.ApicalTiebreakTemporalMemoryProto_capnp import ApicalTiebreakTemporalMemoryProto
 
 from htmresearch_core.experimental import ApicalTiebreakPairMemory
-from htmresearch_core.proto.ApicalTiebreakTemporalMemoryProto_capnp import ApicalTiebreakTemporalMemoryProto
 
 
 
 class ApicalTiebreakTemporalMemoryTest(unittest.TestCase):
 
 
+  @unittest.skipUnless(
+    capnp, "pycapnp is not installed, skipping serialization test.")
   def testSerialization(self):
     tm = ApicalTiebreakPairMemory(columnCount=512)
     proto = ApicalTiebreakTemporalMemoryProto.new_message()

@@ -101,16 +101,20 @@ def findRequirements():
 
 if __name__ == "__main__":
 
+  PY_BINDINGS = os.path.dirname(os.path.realpath(__file__))
+  REPO_DIR = os.path.abspath(os.path.join(PY_BINDINGS, os.pardir, os.pardir))
+
   # Copy the proto files into the proto Python package.
-  destDir = os.path.relpath(os.path.join("src", "htmresearch_core", "proto"))
+  destDir = os.path.relpath(os.path.join(PY_BINDINGS, "src", "htmresearch_core", "proto"))
 
   # Copy the proto files into the proto Python package.
   protoSchemasToCopy = [
     "ApicalTiebreakTemporalMemoryProto.capnp"
   ]
 
+
   for schemaFilename in protoSchemasToCopy:
-    protoPath = os.path.relpath(os.path.join("..", "..", "src", "nupic", "proto", schemaFilename))
+    protoPath = os.path.relpath(os.path.join(REPO_DIR, "src", "nupic", "proto", schemaFilename))
     shutil.copy(protoPath, destDir)
 
   setup(
