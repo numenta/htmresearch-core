@@ -108,9 +108,12 @@ test_script:
       $wc = New-Object 'System.Net.WebClient'
       $wc.UploadFile("https://ci.appveyor.com/api/testresults/junit/$($env:APPVEYOR_JOB_ID)", (Resolve-Path py_test_report.xml))
 
+after_test:
+  - copy %APPVEYOR_BUILD_FOLDER%\bindings\py\dist\*.whl %APPVEYOR_BUILD_FOLDER%\htmresearch_core-%APPVEYOR_REPO_COMMIT%-cp27-none-%WHEEL_NAME_SUFFIX%.whl
+
 artifacts:
-  - path: bindings\py\dist
-    name: htmresearch_core-%APPVEYOR_REPO_COMMIT%-cp27-none-%WHEEL_NAME_SUFFIX% 
+  - path: '*.whl'
+    name: htmresearch_core 
 
 deploy:
   - provider: S3
@@ -121,8 +124,8 @@ deploy:
     bucket: artifacts.numenta.org
     region: us-west-2
     set_public: true
-    artifact: htmresearch_core-%APPVEYOR_REPO_COMMIT%-cp27-none-%WHEEL_NAME_SUFFIX%
-    folder: numenta/htmresearch-core/%CONFIGURATION%/htmresearch_core
+    artifact: htmresearch_core
+    folder: numenta/htmresearch-core/appveyor
     on:
       # Deploy only from master of the main repo. Ignore forks and branches
       appveyor_repo_name: numenta/htmresearch-core
