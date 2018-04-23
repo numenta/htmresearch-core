@@ -20,11 +20,11 @@
 # http://numenta.org/licenses/
 # ----------------------------------------------------------------------
 
-# ASUMPTIONS: Expects a pristine nupic.core source tree without any remnant
+# ASUMPTIONS: Expects a pristine htmresearch-core source tree without any remnant
 #             build artifacts from prior build attempts. Otherwise, behavior is
 #             undefined.
 #
-# OUTPUTS: see nupic.core/ci/build-and-test-nupic-bindings.sh
+# OUTPUTS: see htmresearch-core/ci/build-and-test.sh
 
 
 set -o errexit
@@ -41,4 +41,4 @@ apt-get install -y iwyu
 # Build and test
 PIP_USER=1 \
 BUILD_TYPE="Debug" \
-  ${DIR}/../build-and-test-nupic-bindings.sh "$@"
+  ${DIR}/../build-and-test.sh "$@"

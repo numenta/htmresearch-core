@@ -3,16 +3,11 @@
 #---------------------------------#
 
 # version format
-version: 0.3.0.{build}
+version: '{build}'
 
 branches:
   except:
     - gh-pages
-
-skip_commits:
-  # Add [av skip] to commit messages to skip AppVeyor building
-  # Add [ci skip] to skip Travis and AppVeyor building
-  message: /\[av skip\]/
 
 #---------------------------------#
 #    environment configuration    #
@@ -24,54 +19,34 @@ skip_commits:
 init:
   - git config --global core.autocrlf input
 
-clone_folder: c:\projects\nupic-core
-clone_depth: 50
-
 # Can't have a shallow clone because the CMake process will be
 # calling into git to write the current SHA into the binaries.
 shallow_clone: false
+clone_folder: c:\projects\htmresearch-core
+clone_depth: 1
 
 environment:
   COMPILER_FAMILY: GCC
-  AWS_ACCESS_KEY_ID:
-    secure: /9U0mCHp3k1U8Y5CY/kDqwCKG2gqchG/T/UlVWo8SME=
-  AWS_SECRET_ACCESS_KEY:
-    secure: /8wO17Gir0XAiecJkHeE3jxOJzvyl0+uWcl7BKCuN0FC795golsL8905VmNuRl1o
-  PYPI_USERNAME: numenta
-  PYPI_PASSWORD:
-    secure: UgABryPYZg823OcD1XRosA==
+  EXTERNAL_WINDOWS_DIR: "%APPVEYOR_BUILD_FOLDER%\\external\\%EXTERNAL_STATIC_SUBDIR%"
+  PYTHONPATH: "%PYTHONHOME%"
+  PATH: "%PYTHONHOME%\\Scripts;%PYTHONHOME%;%PATH%"
 
   matrix:
     # Win64-gcc
-    - PYTHON_VERSION: "2.7.9"
+    - PYTHON_VERSION: "2.7.13"
       PYTHON_ARCH: "64"
       PYTHONHOME: "C:\\Python27-x64"
       NC_CMAKE_GENERATOR: "MinGW Makefiles"
-      external_static_subdir: "windows64-gcc"
-      wheel_name_suffix: "win_amd64"
+      EXTERNAL_STATIC_SUBDIR: "windows64-gcc"
+      WHEEL_NAME_SUFFIX: "win_amd64"
 
     # Win32-gcc
-    - PYTHON_VERSION: "2.7.9"
+    - PYTHON_VERSION: "2.7.13"
       PYTHON_ARCH: "32"
       PYTHONHOME: "C:\\Python27"
       NC_CMAKE_GENERATOR: "MinGW Makefiles"
-      external_static_subdir: "windows32-gcc"
-      wheel_name_suffix: "win32"
-
-#    # Win64-Visual Studio
-#    - PYTHON_VERSION: "2.7.9"
-#      PYTHON_ARCH: "64"
-#      PYTHONHOME: "C:\\Python27-x64"
-#      NC_CMAKE_GENERATOR: "Visual Studio 14 2015 Win64"
-#      external_static_subdir: "windows64"
-#      wheel_name_suffix: "win_amd64"
-
-
-matrix:
-  allow_failures:
-    # Checking if Visual Studio build is possible
-    - NC_CMAKE_GENERATOR: "Visual Studio 14 2015 Win64"
-
+      EXTERNAL_STATIC_SUBDIR: "windows32-gcc"
+      WHEEL_NAME_SUFFIX: "win32"
 
 #---------------------------------#
 #       build configuration       #
@@ -80,154 +55,80 @@ matrix:
 # configuration values must be compatible with CMAKE_BUILD_TYPE: Debug or Release
 configuration: Release
 
-
 install:
-  # Dump appveyor build vars for diagnostics
-  - "ECHO APPVEYOR_FORCED_BUILD: %APPVEYOR_FORCED_BUILD%"
-  - "ECHO APPVEYOR_RE_BUILD: %APPVEYOR_RE_BUILD%"
+  - pip install --upgrade pip
+  - pip install --upgrade setuptools wheel
+  - pip install -r bindings/py/requirements.txt 
 
-  - set NUPIC_CORE=c:\projects\nupic-core
-  - set EXTERNAL_WINDOWS_DIR=%NUPIC_CORE%\external\%external_static_subdir%
-
-  - set ARTIFACTS_DIR=%NUPIC_CORE%\build\artifacts
-  - for /f %%i in ('type VERSION') do set BINDINGS_VERSION=%%i
-  - echo Binding version = %BINDINGS_VERSION%
-
-  - set PYTHONPATH=%PYTHONHOME%
-  - set PATH=%PYTHONHOME%\Scripts;%PYTHONHOME%;%PATH%
-
-  # Make unix-compatible patch.exe available to the build by copying it from
-  # Git\usr\bin (that we remove from PATH) to another directory and adding it to
-  # PATH; the reason we copy it is that logic below removes
-  # C:\Program Files\Git\usr\bin from Path to avoid build issue resulting from
-  # sh.exe being on the path.
-  - mkdir "C:\Program Files\PatchFromGit"
-  - ps: copy "C:\Program Files\Git\usr\bin\patch.exe" "C:\Program Files\PatchFromGit"
-  - ps: copy "C:\Program Files\Git\usr\bin\msys*.dll" "C:\Program Files\PatchFromGit"
-  - set PATH=C:\Program Files\PatchFromGit;%PATH%
-
-  - echo %PATH%
-
-  #
-  # Install Python 2.7.x, Pip, Wheel, and NumPy
-  #
-  - cd %NUPIC_CORE%\ci\appveyor
-  - ps: .\install_python_pip.ps1
-
-  #
-  # Install mingwpy toolchain
-  #
-  - ECHO "Installing MinGW toolchain for Python"
   # Install the version of mingwpy toolchain that generates targets compatible
   # with the installed python (Win32 vs. Win64). The compiler tools are
   # installed into %PYTHONHOME%/Scripts/
-  - cmd: "%PYTHONHOME%\\Scripts\\pip.exe install -i https://pypi.anaconda.org/carlkl/simple mingwpy==0.1.0b3"
-  - cmd: "where g++"
-  - cmd: "g++ --version"
-  - cmd: "dir %PYTHONHOME%\\share\\mingwpy"
+  - pip install -i https://pypi.anaconda.org/carlkl/simple mingwpy==0.1.0b3
 
   # Setup MinGW GCC as a valid distutils compiler
-  - cp %EXTERNAL_WINDOWS_DIR%\bin\distutils.cfg %PYTHONHOME%\Lib\distutils\distutils.cfg
-
-  # Display the version and architecture for Python to help with diagnostics
-  - "python --version"
-  - "where python"
-  - "python -c \"import struct; print(struct.calcsize('P') * 8)\""
-
-  # It's useful to know our cmake version
-  - cmd: where cmake
-  - cmd: cmake --version
-
-  # Check NumPy, etc. installed correctly
-  - cmd: pip list
-
-  - cd %NUPIC_CORE%
-  - mkdir %NUPIC_CORE%\build\
-  - mkdir %NUPIC_CORE%\build\release
-  - mkdir %NUPIC_CORE%\build\scripts
+  - copy %EXTERNAL_WINDOWS_DIR%\bin\distutils.cfg %PYTHONHOME%\Lib\distutils\distutils.cfg
 
   # Remove sh.exe from the paths (CMake doesn't like it)
-  - set PATH=%PATH:C:\Program Files (x86)\Git\bin;=%
-  - set PATH=%PATH:C:\Program Files\Git\usr\bin;=%
-  - set PATH=%PATH:C:\MinGW\msys\1.0\bin;=%
+  - ren "C:\Program Files\Git\usr\bin\sh.exe" "git_sh.exe"
 
-
-  # Verify that patch command is available
-  - "where patch"
-
-  # Fake KJ-Async and Capnp-RPC libs, not needed in Lite mode
-  # http://www.cmake.org/Wiki/CmakeMingw
-  - cd %NUPIC_CORE%\build\scripts
-  - cmake -G "%NC_CMAKE_GENERATOR%"
-      -DCMAKE_BUILD_TYPE=%configuration%
-      -DCMAKE_INSTALL_PREFIX=%NUPIC_CORE%\build\release
-      -DPY_EXTENSIONS_DIR=%NUPIC_CORE%\bindings\py\src\nupic\bindings
-      %NUPIC_CORE%
+before_build:
+  # Configure cmake for the current configuration
+  - cmd: |
+      mkdir %APPVEYOR_BUILD_FOLDER%\build\%CONFIGURATION%
+      mkdir %APPVEYOR_BUILD_FOLDER%\build\scripts
+      cd %APPVEYOR_BUILD_FOLDER%\build\scripts
+      cmake -G "%NC_CMAKE_GENERATOR%" -DCMAKE_BUILD_TYPE=%CONFIGURATION% -DCMAKE_INSTALL_PREFIX=%APPVEYOR_BUILD_FOLDER%\build\%CONFIGURATION% -DPY_EXTENSIONS_DIR=%APPVEYOR_BUILD_FOLDER%\bindings\py\src\htmresearch_core %APPVEYOR_BUILD_FOLDER%
 
 build_script:
-  - cd %NUPIC_CORE%\build\scripts
+  # Build C++ library
+  - cmd: |
+      cd %APPVEYOR_BUILD_FOLDER%\build\scripts
+      cmake.exe --build "%APPVEYOR_BUILD_FOLDER%\build\scripts" --target install --config %configuration%
+  
+  # Build python wheel
+  - cmd: |
+      cd %APPVEYOR_BUILD_FOLDER%
+      python setup.py bdist_wheel
 
-  # Run build, using portable, toolchain-agnostic mechanism to start it
-  - cmake.exe --build "%NUPIC_CORE%\build\scripts" --target install --config %configuration%
+before_test:
+ - pip install --use-wheel --no-index --find-links=%APPVEYOR_BUILD_FOLDER%\bindings\py\dist htmresearch-core
 
-  - cd %NUPIC_CORE%
+test_script:
+  # C++ tests
+  - ps: |
+      cd build\$env:CONFIGURATION\bin\
+      .\unit_tests.exe --gtest_output=xml:unit_tests_report.xml
+      $wc = New-Object 'System.Net.WebClient'
+      $wc.UploadFile("https://ci.appveyor.com/api/testresults/junit/$($env:APPVEYOR_JOB_ID)", (Resolve-Path unit_tests_report.xml))
 
-  - python setup.py sdist bdist bdist_wheel
+  # python tests
+  - ps: |
+      cd $env:APPVEYOR_BUILD_FOLDER
+      py.test --junitxml=py_test_report.xml bindings/py/tests
+      $wc = New-Object 'System.Net.WebClient'
+      $wc.UploadFile("https://ci.appveyor.com/api/testresults/junit/$($env:APPVEYOR_JOB_ID)", (Resolve-Path py_test_report.xml))
 
-  - set NUPIC_BINDINGS_WHEEL_NAME=htmresearch_core-%BINDINGS_VERSION%-cp27-none-%wheel_name_suffix%.whl
-
-  # Copy final wheel to NUPIC_CORE, so that AppVeyor can see it as an artifact
-  - ps: copy .\bindings\py\dist\$env:NUPIC_BINDINGS_WHEEL_NAME .
-
-  # Copy final wheel, to appropriately named wheel for use with NuPIC
-  # iterative builds (via nupic\.nupic_modules long-SHA reference).
-  # Ties in with this Pip regex;
-  # https://github.com/pypa/pip/blob/develop/pip/wheel.py#L616
-  - ps: copy .\$env:NUPIC_BINDINGS_WHEEL_NAME .\htmresearch_core-$env:APPVEYOR_REPO_COMMIT-cp27-none-$env:wheel_name_suffix.whl
-
-after_build:
-  # Install htmresearch_core first, because py_region_test.exe depends on it.
-  - pip install .\%NUPIC_BINDINGS_WHEEL_NAME%
-
-  # Run legacy binary tests
-  - mkdir %ARTIFACTS_DIR%
-  - cd %NUPIC_CORE%\build\release\bin
-  - unit_tests.exe --gtest_output=xml:%ARTIFACTS_DIR%\unit_tests_report.xml
-
-  # Run python tests
-  - cd %NUPIC_CORE%
-  - python setup.py test
-
-# Disable automatic tests
-test: off
+after_test:
+  - cmd: |
+      for /f %%i in ('type VERSION') do set VERSION=%%i
+      copy %APPVEYOR_BUILD_FOLDER%\bindings\py\dist\htmresearch_core-%VERSION%-cp27-cp27m-%WHEEL_NAME_SUFFIX%.whl %APPVEYOR_BUILD_FOLDER%\htmresearch_core-%APPVEYOR_REPO_COMMIT%-cp27-none-%WHEEL_NAME_SUFFIX%.whl
 
 artifacts:
-  # Non-recursive search in build folder for Wheels
   - path: '*.whl'
-
-# NOTE: This is turned off and will likely be removed once deployments of
-#       releases are controlled from a central authority. -- Matt
-# -----------------------------------------------------------------------
-# on_success:
-#   # Github tagged builds
-#   - cmd: echo "executing on_success"
-#   - ps: >-
-#       If ($env:APPVEYOR_REPO_TAG -eq "true" -or $env:APPVEYOR_REPO_TAG -eq "True") {
-#         Write-Host "Uploading bindings to PYPI"
-#         pip install httplib requests twine --upgrade
-#         twine upload -u $env:PYPI_USERNAME -p $env:PYPI_PASSWORD -r pypi $env:NUPIC_CORE\bindings\py\dist\htmresearch_core-$env:BINDINGS_VERSION-cp27-none-$env:wheel_name_suffix.whl
-#       }
+    name: htmresearch_core 
 
 deploy:
-  # Iterative builds
   - provider: S3
-    access_key_id: AKIAIGHYSEHV3WFKOWNQ
+    access_key_id:
+     secure: /9U0mCHp3k1U8Y5CY/kDqwCKG2gqchG/T/UlVWo8SME=
     secret_access_key:
       secure: /8wO17Gir0XAiecJkHeE3jxOJzvyl0+uWcl7BKCuN0FC795golsL8905VmNuRl1o
-    bucket: "artifacts.numenta.org"
+    bucket: artifacts.numenta.org
     region: us-west-2
     set_public: true
-    artifact: "htmresearch_core-$(APPVEYOR_REPO_COMMIT)-cp27-none-$(wheel_name_suffix).whl"
-    folder: "numenta/nupic.core/releases/htmresearch_core"
+    artifact: htmresearch_core
+    folder: numenta/htmresearch-core/appveyor
     on:
+      # Deploy only from master of the main repo. Ignore forks and branches
+      appveyor_repo_name: numenta/htmresearch-core
       branch: master
