@@ -56,14 +56,14 @@ environment:
 configuration: Release
 
 install:
-  - pip install --upgrade pip
-  - pip install --upgrade setuptools wheel
-  - pip install -r bindings/py/requirements.txt 
+  - python -m pip install --upgrade pip
+  - python -m pip install --upgrade setuptools wheel
+  - python -m pip install -r bindings/py/requirements.txt 
 
   # Install the version of mingwpy toolchain that generates targets compatible
   # with the installed python (Win32 vs. Win64). The compiler tools are
   # installed into %PYTHONHOME%/Scripts/
-  - pip install -i https://pypi.anaconda.org/carlkl/simple mingwpy==0.1.0b3
+  - python -m pip install -i https://pypi.anaconda.org/carlkl/simple mingwpy==0.1.0b3
 
   # Setup MinGW GCC as a valid distutils compiler
   - copy %EXTERNAL_WINDOWS_DIR%\bin\distutils.cfg %PYTHONHOME%\Lib\distutils\distutils.cfg
@@ -91,7 +91,7 @@ build_script:
       python setup.py bdist_wheel
 
 before_test:
- - pip install --use-wheel --no-index --find-links=%APPVEYOR_BUILD_FOLDER%\bindings\py\dist htmresearch-core
+ - pip install --no-index --find-links=%APPVEYOR_BUILD_FOLDER%\bindings\py\dist htmresearch-core
 
 test_script:
   # C++ tests
