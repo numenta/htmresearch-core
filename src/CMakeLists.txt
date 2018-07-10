@@ -254,6 +254,15 @@ set(src_htmresearchcore_srcs
     nupic/experimental/ApicalTiebreakTemporalMemory.cpp
     nupic/experimental/SDRSelection.cpp
 )
+
+if(NOT MINGW)
+  # This file uses threading that's not available in our version of MINGW.
+  set(src_htmresearchcore_srcs
+      ${src_htmresearchcore_srcs}
+      nupic/experimental/GridUniqueness.cpp
+  )
+endif()
+
 set(src_lib_static_htmresearchcore_srcs
     ${src_capnp_generated_srcs}
     ${src_htmresearchcore_srcs})
@@ -316,10 +325,20 @@ message(STATUS "src_common_test_exe_libs = ${src_common_test_exe_libs}")
 # Setup gtests
 #
 set(src_executable_gtests unit_tests)
+set(src_htmresearch_core_gtest_srcs
+    test/unit/experimental/ApicalTiebreakTemporalMemoryTest.cpp
+    test/unit/UnitTestMain.cpp
+    test/unit/utils/GroupByTest.cpp
+)
+if(NOT MINGW)
+  # This file uses threading that's not available in our version of MINGW.
+  set(src_htmresearch_core_gtest_srcs
+      ${src_htmresearch_core_gtest_srcs}
+      test/unit/experimental/GridUniquenessTest.cpp
+  )
+endif()
 add_executable(${src_executable_gtests}
-               test/unit/experimental/ApicalTiebreakTemporalMemoryTest.cpp
-               test/unit/UnitTestMain.cpp
-               test/unit/utils/GroupByTest.cpp
+               ${src_htmresearch_core_gtest_srcs}
 )
 target_link_libraries(${src_executable_gtests}
                       ${src_lib_static_gtest}
