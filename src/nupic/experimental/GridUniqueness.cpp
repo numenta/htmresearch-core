@@ -38,6 +38,7 @@
 #include <mutex>
 #include <chrono>
 #include <atomic>
+#include <algorithm>
 
 using std::vector;
 using std::pair;

@@ -127,6 +127,10 @@ using namespace nupic;
 
 %naturalvar;
 
+#ifndef NTA_OS_WINDOWS
+
+// computeGridUniquenessHypercube uses threading that's not available in our
+// MINGW Windows build system.
 
 %{
   #include <nupic/experimental/GridUniqueness.hpp>
@@ -177,6 +181,8 @@ using namespace nupic;
     return pyResult;
   }
 }
+
+#endif NTA_OS_WINDOWS
 
 //--------------------------------------------------------------------------------
 // Apical Tiebreak Temporal Memory
