@@ -252,6 +252,7 @@ set(src_lib_static_htmresearchcore_solo htmresearch_core_solo)
 
 set(src_htmresearchcore_srcs
     nupic/experimental/ApicalTiebreakTemporalMemory.cpp
+    nupic/experimental/GridUniqueness.cpp
     nupic/experimental/SDRSelection.cpp
 )
 set(src_lib_static_htmresearchcore_srcs
@@ -318,6 +319,7 @@ message(STATUS "src_common_test_exe_libs = ${src_common_test_exe_libs}")
 set(src_executable_gtests unit_tests)
 add_executable(${src_executable_gtests}
                test/unit/experimental/ApicalTiebreakTemporalMemoryTest.cpp
+               test/unit/experimental/GridUniquenessTest.cpp
                test/unit/UnitTestMain.cpp
                test/unit/utils/GroupByTest.cpp
 )
