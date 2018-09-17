@@ -2,6 +2,9 @@
 #      general configuration      #
 #---------------------------------#
 
+# FIXME: RES-776 - Temporary fix cmake incompatibilities
+image: Previous Visual Studio 2017
+
 # version format
 version: '{build}'
 
@@ -41,12 +44,12 @@ environment:
       WHEEL_NAME_SUFFIX: "win_amd64"
 
     # Win32-gcc
-    - PYTHON_VERSION: "2.7.13"
-      PYTHON_ARCH: "32"
-      PYTHONHOME: "C:\\Python27"
-      NC_CMAKE_GENERATOR: "MinGW Makefiles"
-      EXTERNAL_STATIC_SUBDIR: "windows32-gcc"
-      WHEEL_NAME_SUFFIX: "win32"
+    # - PYTHON_VERSION: "2.7.13"
+    #   PYTHON_ARCH: "32"
+    #   PYTHONHOME: "C:\\Python27"
+    #   NC_CMAKE_GENERATOR: "MinGW Makefiles"
+    #   EXTERNAL_STATIC_SUBDIR: "windows32-gcc"
+    #   WHEEL_NAME_SUFFIX: "win32"
 
 #---------------------------------#
 #       build configuration       #
@@ -74,6 +77,7 @@ install:
 before_build:
   # Configure cmake for the current configuration
   - cmd: |
+      cmake --version
       mkdir %APPVEYOR_BUILD_FOLDER%\build\%CONFIGURATION%
       mkdir %APPVEYOR_BUILD_FOLDER%\build\scripts
       cd %APPVEYOR_BUILD_FOLDER%\build\scripts
