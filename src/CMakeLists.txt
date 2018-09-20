@@ -479,9 +479,13 @@ if (NUPIC_BUILD_PYEXT_MODULES)
     #
 
     # Note: swig_add_module outputs ${swig_generated_file_fullname}
-    SWIG_ADD_LIBRARY(${MODULE_NAME} 
-      LANGUAGE python 
-      SOURCES ${source_interface_file})
+    if (CMAKE_VERSION VERSION_LESS "3.8")
+      swig_add_module(${MODULE_NAME} python ${source_interface_file})
+    else ()
+      SWIG_ADD_LIBRARY(${MODULE_NAME} LANGUAGE python 
+        SOURCES ${source_interface_file})
+    endif ()
+
 
     set_source_files_properties(
       ${swig_generated_file_fullname} PROPERTIES
