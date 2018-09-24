@@ -1,2 +1,2 @@
 #See http://www.pip-installer.org/en/latest/requirements.html for details
-nupic.bindings==1.0.2
+nupic.bindings==1.0.6

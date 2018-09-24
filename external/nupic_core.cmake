@@ -114,7 +114,11 @@ set(GTEST_STATIC_LIB_TARGET "${NUPIC_CORE_LIB_DIR}/${CMAKE_STATIC_LIBRARY_PREFIX
 
 # Swig
 set(SWIG_EXECUTABLE "${NUPIC_CORE_INSTALL_DIR}/bin/swig${CMAKE_EXECUTABLE_SUFFIX}")
-set(SWIG_DIR "${NUPIC_CORE_INSTALL_DIR}/share/swig/3.0.2")
+if(${CMAKE_SYSTEM_NAME} MATCHES "Windows")
+    set(SWIG_DIR "${NUPIC_CORE_INSTALL_DIR}/share/swig/Lib")
+else()
+    set(SWIG_DIR "${NUPIC_CORE_INSTALL_DIR}/share/swig/3.0.12")
+endif()
 add_custom_target(Swig
     COMMENT "Using Swig installation from nupic.core dependency"
 )
