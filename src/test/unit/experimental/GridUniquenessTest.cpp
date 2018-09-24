@@ -109,6 +109,32 @@ namespace {
       findGridDisplacementZero(A, {41.0, 42.5}, {0.5, 0.5}, 0.1, displacement));
   }
 
+  /**
+   * Test rectangles just outside and just inside the radius of location zero.
+   * Specifically focus on the area that would be covered by a square around
+   * zero but not by a circle.
+   */
+  TEST(GridUniquenessTest, ZeroHasACircularRadius)
+  {
+    const vector<vector<vector<double>>> A = {
+      {{1, 0},
+       {0, 1}}
+    };
+
+    const double phaseResolution = 0.2;
+
+    double d = phaseResolution / (2 * sqrt(2));
+
+    vector<double> displacement(2);
+    ASSERT_FALSE(
+      findGridDisplacementZero(A, {d + phaseResolution/100, d + phaseResolution/100},
+                               {0.2, 0.2}, phaseResolution, displacement));
+
+    ASSERT_TRUE(
+      findGridDisplacementZero(A, {d - phaseResolution/100, d - phaseResolution/100},
+                               {0.2, 0.2}, phaseResolution, displacement));
+  }
+
   TEST(GridUniquenessTest, 1DSanityCheck)
   {
     const vector<double> scales = {2, 3, 6, 7, 21}; // Factors of 42

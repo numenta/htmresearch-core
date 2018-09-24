@@ -69,14 +69,15 @@ pair<double,double> computePhaseDisplacement(
  * Checks whether a 2D range overlaps any squares of width w centered on points
  * in the square lattice.
  */
-bool overlapsAnySquareLatticeSquare(double left, double right, double bottom,
+bool overlapsAnySquareLatticeCircle(double left, double right, double bottom,
                                     double top, double w)
 {
   const double r = w/2;
+  const double rSquared = pow(r, 2);
 
   // Find the square lattice "hull" of the 2D range. Expand the range outward to
-  // capture any squares that are centered near the range, then collapse it
-  // inward (via ceil and floor) to find the first and last square along each
+  // capture any circles that are centered near the range, then collapse it
+  // inward (via ceil and floor) to find the first and last circles along each
   // axis.
   const double hullLeft = ceil(left - r);
   const double hullRight = floor(right + r);
@@ -87,14 +88,14 @@ bool overlapsAnySquareLatticeSquare(double left, double right, double bottom,
   {
     for (double y = hullBottom; y <= hullTop; y += 1.0)
     {
-      if (right < x - r ||
-          x + r < left ||
-          top < y - r ||
-          y + r < bottom)
-      {
-        // They don't overlap
-      }
-      else
+      // Test the circle centered at x, y to see if it overlaps with
+      // the provided rectangle.
+
+      // Find the point on the rectangle that is nearest to the circle.
+      const double nearestX = std::max(left, std::min(x, right));
+      const double nearestY = std::max(bottom, std::min(y, top));
+
+      if (pow(x - nearestX, 2) + pow(y - nearestY, 2) < rSquared)
       {
         return true;
       }
@@ -171,6 +172,7 @@ bool tryFindGridDisplacementZero(
   // tryProveNegative is guaranteed to be zero-overlapping here, so the program
   // won't get caught in infinite recursion.
   const double r = phaseResolution/2 + 0.000000001;
+  const double rSquared = pow(r, 2);
 
   HyperrectangleVertexEnumerator vertices(x0, dims, numDims);
   while (vertices.getNext(vertexBuffer))
@@ -184,7 +186,7 @@ bool tryFindGridDisplacementZero(
       dPhase.second -= floor(dPhase.second);
       if (dPhase.first > 0.5) { dPhase.first = 1.0 - dPhase.first; }
       if (dPhase.second > 0.5) { dPhase.second = 1.0 - dPhase.second; }
-      if (dPhase.first > r || dPhase.second > r)
+      if (pow(dPhase.first, 2) + pow(dPhase.second, 2) > rSquared)
       {
         vertexDisqualified = true;
         break;
@@ -230,7 +232,7 @@ bool tryProveGridDisplacementZeroImpossible(
       projection_top = std::max(projection_top, phase.second);
     }
 
-    if (!overlapsAnySquareLatticeSquare(projection_left, projection_right,
+    if (!overlapsAnySquareLatticeCircle(projection_left, projection_right,
                                         projection_bottom, projection_top,
                                         phaseResolution))
     {
