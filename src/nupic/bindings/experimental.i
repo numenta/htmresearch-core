@@ -137,41 +137,71 @@ using namespace nupic;
 %}
 
 %pythoncode %{
-  def computeGridUniquenessHypercube(A, phaseResolution, ignoredCenterDiameter):
-    A = numpy.asarray(A, dtype="float64")
+  def computeGridUniquenessHypercube(domainToPlaneByModule, latticeBasisByModule,
+                                     phaseResolution, ignoredCenterDiameter):
+    domainToPlaneByModule = numpy.asarray(domainToPlaneByModule, dtype="float64")
+    latticeBasisByModule = numpy.asarray(latticeBasisByModule, dtype="float64")
 
-    return _computeGridUniquenessHypercube(A, phaseResolution,
+    return _computeGridUniquenessHypercube(
+      domainToPlaneByModule, latticeBasisByModule, phaseResolution,
       ignoredCenterDiameter)
 %}
 
 %inline {
-  PyObject* _computeGridUniquenessHypercube(PyObject* py_A,
+  PyObject* _computeGridUniquenessHypercube(PyObject* py_domainToPlaneByModule,
+                                            PyObject* py_latticeBasisByModule,
                                             Real64 phaseResolution,
                                             Real64 ignoredCenterDiameter)
   {
-    PyArrayObject* pyArr_A = (PyArrayObject*)py_A;
-    NTA_CHECK(PyArray_NDIM(pyArr_A) == 3);
-    npy_intp* npy_dims = PyArray_DIMS(pyArr_A);
+    PyArrayObject* pyArr_domainToPlaneByModule =
+      (PyArrayObject*)py_domainToPlaneByModule;
+    NTA_CHECK(PyArray_NDIM(pyArr_domainToPlaneByModule) == 3);
+    npy_intp* npy_dims = PyArray_DIMS(pyArr_domainToPlaneByModule);
 
-    std::vector<std::vector<std::vector<Real64 > > > A;
+    std::vector<std::vector<std::vector<Real64>>> domainToPlaneByModule;
     for (size_t i = 0; i < npy_dims[0]; i++)
     {
-      std::vector<std::vector<Real64> > module;
+      std::vector<std::vector<Real64>> module;
       for (size_t j = 0; j < npy_dims[1]; j++)
       {
         std::vector<Real64> row;
         for (size_t k = 0; k < npy_dims[2]; k++)
         {
-          row.push_back(*(Real64*)PyArray_GETPTR3(pyArr_A, i, j, k));
+          row.push_back(*(Real64*)PyArray_GETPTR3(pyArr_domainToPlaneByModule,
+                                                  i, j, k));
         }
         module.push_back(row);
       }
-      A.push_back(module);
+      domainToPlaneByModule.push_back(module);
+    }
+
+    PyArrayObject* pyArr_latticeBasisByModule =
+      (PyArrayObject*)py_latticeBasisByModule;
+    NTA_CHECK(PyArray_NDIM(pyArr_latticeBasisByModule) == 3);
+    npy_dims = PyArray_DIMS(pyArr_latticeBasisByModule);
+
+    std::vector<std::vector<std::vector<Real64>>> latticeBasisByModule;
+    for (size_t i = 0; i < npy_dims[0]; i++)
+    {
+      std::vector<std::vector<Real64>> module;
+      for (size_t j = 0; j < npy_dims[1]; j++)
+      {
+        std::vector<Real64> row;
+        for (size_t k = 0; k < npy_dims[2]; k++)
+        {
+          row.push_back(*(Real64*)PyArray_GETPTR3(pyArr_latticeBasisByModule,
+                                                  i, j, k));
+        }
+        module.push_back(row);
+      }
+      latticeBasisByModule.push_back(module);
     }
 
     std::pair<Real64,std::vector<Real64>> result =
       nupic::experimental::grid_uniqueness::computeGridUniquenessHypercube(
-        A, phaseResolution, ignoredCenterDiameter);
+        domainToPlaneByModule, latticeBasisByModule, phaseResolution,
+        ignoredCenterDiameter);
+
     PyObject* pyResult = PyTuple_New(2);
     PyTuple_SetItem(pyResult, 0, PyFloat_FromDouble(result.first));
     PyTuple_SetItem(pyResult, 1, nupic::NumpyVectorT<Real64>(result.second.size(),

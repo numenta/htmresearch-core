@@ -44,22 +44,37 @@
 using std::vector;
 using std::pair;
 
-static bool quitting = false;
+static std::atomic<bool> quitting(false);
 
-pair<double,double> computePhaseDisplacement(
-  const vector<vector<double>>& A,
-  const double dx[])
+pair<double,double> transform2D(const vector<vector<double>>& M,
+                                pair<double,double> p)
+{
+  return {M[0][0]*p.first + M[0][1]*p.second,
+          M[1][0]*p.first + M[1][1]*p.second};
+}
+
+pair<double,double> inverseTransform2D(const vector<vector<double>>& M,
+                                       pair<double,double> p)
+{
+  const double detInv = 1 / (M[0][0]*M[1][1] - M[0][1]*M[1][0]);
+
+  return {detInv*M[1][1]*p.first - detInv*M[0][1]*p.second,
+          -detInv*M[1][0]*p.first + detInv*M[0][0]*p.second};
+}
+
+pair<double,double> transformND(const vector<vector<double>>& M,
+                                const double p[])
 {
   pair<double,double> result = {0, 0};
 
-  for (size_t col = 0; col < A[0].size(); col++)
+  for (size_t col = 0; col < M[0].size(); col++)
   {
-    result.first += A[0][col]*dx[col];
+    result.first += M[0][col]*p[col];
   }
 
-  for (size_t col = 0; col < A[1].size(); col++)
+  for (size_t col = 0; col < M[1].size(); col++)
   {
-    result.second += A[1][col]*dx[col];
+    result.second += M[1][col]*p[col];
   }
 
   return result;
@@ -67,44 +82,93 @@ pair<double,double> computePhaseDisplacement(
 
 
 /**
- * Checks whether a 2D range overlaps any squares of width w centered on points
- * in the square lattice.
+ * Enumerate the points of a lattice within a specified rectangle.
  */
-bool overlapsAnySquareLatticeCircle(double left, double right, double bottom,
-                                    double top, double w)
+class LatticePointEnumerator
 {
-  const double r = w/2;
-  const double rSquared = pow(r, 2);
-
-  // Find the square lattice "hull" of the 2D range. Expand the range outward to
-  // capture any circles that are centered near the range, then collapse it
-  // inward (via ceil and floor) to find the first and last circles along each
-  // axis.
-  const double hullLeft = ceil(left - r);
-  const double hullRight = floor(right + r);
-  const double hullBottom = ceil(bottom - r);
-  const double hullTop = floor(top + r);
-
-  for (double x = hullLeft; x <= hullRight; x += 1.0)
+public:
+  LatticePointEnumerator(const vector<vector<double>>& latticeBasis, double x0,
+                         double y0, double width, double height)
+    :latticeBasis_(latticeBasis), x0_(x0), y0_(y0), width_(width), height_(height)
   {
-    for (double y = hullBottom; y <= hullTop; y += 1.0)
-    {
-      // Test the circle centered at x, y to see if it overlaps with
-      // the provided rectangle.
+    // Find the bounding box of the rectangle in the lattice's basis.
+    double xmin = std::numeric_limits<double>::max();
+    double xmax = std::numeric_limits<double>::lowest();
+    double ymin = std::numeric_limits<double>::max();
+    double ymax = std::numeric_limits<double>::lowest();
+    updateBoundingBox_(&xmin, &xmax, &ymin, &ymax, {x0, y0});
+    updateBoundingBox_(&xmin, &xmax, &ymin, &ymax, {x0 + width, y0});
+    updateBoundingBox_(&xmin, &xmax, &ymin, &ymax, {x0, y0 + height});
+    updateBoundingBox_(&xmin, &xmax, &ymin, &ymax, {x0 + width, y0 + height});
 
-      // Find the point on the rectangle that is nearest to the circle.
-      const double nearestX = std::max(left, std::min(x, right));
-      const double nearestY = std::max(bottom, std::min(y, top));
-
-      if (pow(x - nearestX, 2) + pow(y - nearestY, 2) < rSquared)
-      {
-        return true;
-      }
-    }
+    // For each integer pair that's in this rectangle, project it back into
+    // domain coordinates. If it's within the original rectangle, return it.
+    imin_ = ceil(xmin);
+    imax_ = floor(xmax);
+    jmin_ = ceil(ymin);
+    jmax_ = floor(ymax);
+    i_ = imin_;
+    j_ = jmin_;
   }
 
-  return false;
-}
+  bool getNext(pair<double,double> *out)
+  {
+    bool found = false;
+    while (!found && i_ <= imax_)
+    {
+      while (!found && j_ <= jmax_)
+      {
+        pair<double, double> p = transform2D(latticeBasis_, {i_, j_});
+
+        if (p.first >= x0_ && p.first <= x0_ + width_ &&
+            p.second >= y0_ && p.second <= y0_ + height_)
+        {
+          found = true;
+          *out = p;
+        }
+
+        j_ += 1.0;
+      }
+
+      if (j_ >= jmax_)
+      {
+        i_ += 1.0;
+        j_ = jmin_;
+      }
+    }
+    return found;
+  }
+
+  void restart()
+  {
+    i_ = imin_;
+    j_ = jmin_;
+  }
+
+private:
+  void updateBoundingBox_(double *xmin, double *xmax, double *ymin, double *ymax,
+                          pair<double,double> planePoint) const
+  {
+    const pair<double,double> q = inverseTransform2D(latticeBasis_, planePoint);
+    *xmin = std::min(*xmin, q.first);
+    *xmax = std::max(*xmax, q.first);
+    *ymin = std::min(*ymin, q.second);
+    *ymax = std::max(*ymax, q.second);
+  }
+
+  const vector<vector<double>> &latticeBasis_;
+  const double x0_;
+  const double y0_;
+  const double width_;
+  const double height_;
+
+  double imin_;
+  double imax_;
+  double jmin_;
+  double jmax_;
+  double i_;
+  double j_;
+};
 
 /**
  * Enumerate the vertices of a hyperrectangle by incrementing an integer and
@@ -157,37 +221,50 @@ private:
 
 /**
  * Quickly check a few points in this hyperrectangle to see if they have grid
- * displacement zero.
+ * code zero.
  */
-bool tryFindGridDisplacementZero(
-  const vector<vector<vector<double>>>& A,
+bool tryFindGridCodeZero(
+  const vector<vector<vector<double>>>& domainToPlaneByModule,
+  const vector<vector<vector<double>>>& latticeBasisByModule,
   size_t numDims,
   const double x0[],
   const double dims[],
-  double phaseResolution,
+  double readoutResolution,
   double vertexBuffer[])
 {
   // Add a small epsilon to handle situations where floating point math causes a
   // vertex to be non-zero-overlapping here and zero-overlapping in
-  // tryProveNegative. With this addition, anything zero-overlapping in
-  // tryProveNegative is guaranteed to be zero-overlapping here, so the program
-  // won't get caught in infinite recursion.
-  const double r = phaseResolution/2 + 0.000000001;
+  // tryProveGridCodeZeroImpossible. With this addition, anything
+  // zero-overlapping in tryProveGridCodeZeroImpossible is guaranteed to be
+  // zero-overlapping here, so the program won't get caught in infinite
+  // recursion.
+  const double r = readoutResolution/2 + 0.000000001;
   const double rSquared = pow(r, 2);
 
   HyperrectangleVertexEnumerator vertices(x0, dims, numDims);
   while (vertices.getNext(vertexBuffer))
   {
     bool vertexDisqualified = false;
-    for (const vector<vector<double>>& module : A)
+
+    for (size_t iModule = 0; iModule < domainToPlaneByModule.size(); iModule++)
     {
-      pair<double,double> dPhase = computePhaseDisplacement(module,
-                                                            vertexBuffer);
-      dPhase.first -= floor(dPhase.first);
-      dPhase.second -= floor(dPhase.second);
-      if (dPhase.first > 0.5) { dPhase.first = 1.0 - dPhase.first; }
-      if (dPhase.second > 0.5) { dPhase.second = 1.0 - dPhase.second; }
-      if (pow(dPhase.first, 2) + pow(dPhase.second, 2) > rSquared)
+      const pair<double, double> pointOnPlane =
+        transformND(domainToPlaneByModule[iModule], vertexBuffer);
+
+      LatticePointEnumerator latticePoints(latticeBasisByModule[iModule],
+                                           pointOnPlane.first - r,
+                                           pointOnPlane.second - r, 2*r, 2*r);
+
+      bool isZero = false;
+
+      pair<double, double> latticePoint;
+      while (!isZero && latticePoints.getNext(&latticePoint))
+      {
+        isZero = (pow(latticePoint.first - pointOnPlane.first, 2) +
+                  pow(latticePoint.second - pointOnPlane.second, 2) <= rSquared);
+      }
+
+      if (!isZero)
       {
         vertexDisqualified = true;
         break;
@@ -204,39 +281,68 @@ bool tryFindGridDisplacementZero(
 }
 
 /**
- * Quickly check whether this hyperrectangle excludes grid displacement zero in
- * any individual module.
+ * Quickly check whether this hyperrectangle excludes grid code zero
+ * in any individual module.
  */
-bool tryProveGridDisplacementZeroImpossible(
-  const vector<vector<vector<double>>>& A,
+bool tryProveGridCodeZeroImpossible(
+  const vector<vector<vector<double>>>& domainToPlaneByModule,
+  const vector<vector<vector<double>>>& latticeBasisByModule,
   size_t numDims,
   const double x0[],
   const double dims[],
-  double phaseResolution,
+  double readoutResolution,
   double vertexBuffer[])
 {
   HyperrectangleVertexEnumerator vertices(x0, dims, numDims);
-  for (const vector<vector<double>>& module : A)
+  for (size_t iModule = 0; iModule < domainToPlaneByModule.size(); iModule++)
   {
-    double projection_left = std::numeric_limits<double>::max();
-    double projection_right = std::numeric_limits<double>::lowest();
-    double projection_bottom = std::numeric_limits<double>::max();
-    double projection_top = std::numeric_limits<double>::lowest();
+    double xmin = std::numeric_limits<double>::max();
+    double xmax = std::numeric_limits<double>::lowest();
+    double ymin = std::numeric_limits<double>::max();
+    double ymax = std::numeric_limits<double>::lowest();
     vertices.restart();
     while (vertices.getNext(vertexBuffer))
     {
-      pair<double,double> phase = computePhaseDisplacement(module,
-                                                           vertexBuffer);
-      projection_left = std::min(projection_left, phase.first);
-      projection_right = std::max(projection_right, phase.first);
-      projection_bottom = std::min(projection_bottom, phase.second);
-      projection_top = std::max(projection_top, phase.second);
+      pair<double,double> phase = transformND(domainToPlaneByModule[iModule],
+                                              vertexBuffer);
+      xmin = std::min(xmin, phase.first);
+      xmax = std::max(xmax, phase.first);
+      ymin = std::min(ymin, phase.second);
+      ymax = std::max(ymax, phase.second);
     }
 
-    if (!overlapsAnySquareLatticeCircle(projection_left, projection_right,
-                                        projection_bottom, projection_top,
-                                        phaseResolution))
+    const double r = readoutResolution/2;
+    const double rSquared = pow(r, 2);
+    LatticePointEnumerator latticePoints(latticeBasisByModule[iModule],
+                                         xmin - r, ymin - r,
+                                         (xmax - xmin) + 2*r,
+                                         (ymax - ymin) + 2*r);
+    pair<double, double> latticePoint;
+    bool foundLatticeCollision = false;
+    while (!foundLatticeCollision && latticePoints.getNext(&latticePoint))
     {
+      // Test the circle centered at this lattice point to see if it overlaps
+      // with the provided rectangle.
+
+      // Find the point on the rectangle that is nearest to the circle.
+      const double nearestX = std::max(xmin,
+                                       std::min(latticePoint.first,
+                                                xmax));
+      const double nearestY = std::max(ymin,
+                                       std::min(latticePoint.second,
+                                                ymax));
+
+      if (pow(latticePoint.first - nearestX, 2) +
+          pow(latticePoint.second - nearestY, 2) < rSquared)
+      {
+        foundLatticeCollision = true;
+      }
+    }
+
+    if (!foundLatticeCollision)
+    {
+      // This module never gets near grid code zero for the provided range of
+      // locations. So this range can't possibly contain grid code zero.
       return true;
     }
   }
@@ -270,12 +376,13 @@ private:
  * Helper function that doesn't allocate any memory, so it's much better for
  * recursion.
  */
-bool findDisplacementZeroHelper(
-  const vector<vector<vector<double>>>& A,
+bool findGridCodeZeroHelper(
+  const vector<vector<vector<double>>>& domainToPlaneByModule,
+  const vector<vector<vector<double>>>& latticeBasisByModule,
   size_t numDims,
   double x0[],
   double dims[],
-  double phaseResolution,
+  double readoutResolution,
   double vertexBuffer[],
   std::atomic<bool>& shouldContinue)
 {
@@ -284,14 +391,15 @@ bool findDisplacementZeroHelper(
     return false;
   }
 
-  if (tryFindGridDisplacementZero(A, numDims, x0, dims, phaseResolution,
-                                  vertexBuffer))
+  if (tryFindGridCodeZero(domainToPlaneByModule, latticeBasisByModule, numDims,
+                          x0, dims, readoutResolution, vertexBuffer))
   {
     return true;
   }
 
-  if (tryProveGridDisplacementZeroImpossible(A, numDims, x0, dims,
-                                             phaseResolution, vertexBuffer))
+  if (tryProveGridCodeZeroImpossible(domainToPlaneByModule,
+                                     latticeBasisByModule, numDims, x0, dims,
+                                     readoutResolution, vertexBuffer))
   {
     return false;
   }
@@ -301,45 +409,61 @@ bool findDisplacementZeroHelper(
   {
     SwapValueRAII swap1(&dims[iWidestDim], dims[iWidestDim] / 2);
 
-    if (findDisplacementZeroHelper(A, numDims, x0, dims, phaseResolution,
-                                   vertexBuffer, shouldContinue))
+    if (findGridCodeZeroHelper(domainToPlaneByModule, latticeBasisByModule,
+                               numDims, x0, dims, readoutResolution,
+                               vertexBuffer, shouldContinue))
     {
       return true;
     }
 
     {
       SwapValueRAII swap2(&x0[iWidestDim], x0[iWidestDim] + dims[iWidestDim]);
-      return findDisplacementZeroHelper(A, numDims, x0, dims, phaseResolution,
-                                        vertexBuffer, shouldContinue);
+      return findGridCodeZeroHelper(domainToPlaneByModule, latticeBasisByModule,
+                                    numDims, x0, dims, readoutResolution,
+                                    vertexBuffer, shouldContinue);
     }
   }
 }
 
-bool nupic::experimental::grid_uniqueness::findGridDisplacementZero(
-  const vector<vector<vector<double>>>& A,
+bool nupic::experimental::grid_uniqueness::findGridCodeZero(
+  const vector<vector<vector<double>>>& domainToPlaneByModule,
+  const vector<vector<vector<double>>>& latticeBasisByModule,
   const vector<double>& x0,
   const vector<double>& dims,
-  double phaseResolution,
-  vector<double>& displacementWithGridCodeZero)
+  double readoutResolution,
+  vector<double>* pointWithGridCodeZero)
 {
   // Avoid doing any allocations in each recursion.
   vector<double> x0Copy(x0);
   vector<double> dimsCopy(dims);
   std::atomic<bool> shouldContinue(true);
 
-  NTA_ASSERT(A[0].size() == 2);
-  NTA_ASSERT(displacementWithGridCodeZero.size() == dims.size());
+  vector<double> defaultPointBuffer;
 
-  return findDisplacementZeroHelper(
-    A, dimsCopy.size(), x0Copy.data(), dimsCopy.data(), phaseResolution,
-    displacementWithGridCodeZero.data(), shouldContinue);
+  if (pointWithGridCodeZero != nullptr)
+  {
+    NTA_ASSERT(pointWithGridCodeZero->size() == dims.size());
+  }
+  else
+  {
+    defaultPointBuffer.resize(dims.size());
+    pointWithGridCodeZero = &defaultPointBuffer;
+  }
+
+  NTA_ASSERT(domainToPlaneByModule[0].size() == 2);
+
+  return findGridCodeZeroHelper(
+    domainToPlaneByModule, latticeBasisByModule, dimsCopy.size(), x0Copy.data(),
+    dimsCopy.data(), readoutResolution, pointWithGridCodeZero->data(),
+    shouldContinue);
 }
 
 
 struct GridUniquenessState {
   // Constants (thread-safe)
-  const vector<vector<vector<double>>>& A;
-  const double phaseResolution;
+  const vector<vector<vector<double>>>& domainToPlaneByModule;
+  const vector<vector<vector<double>>>& latticeBasisByModule;
+  const double readoutResolution;
   const size_t numDims;
 
   // Task management
@@ -351,8 +475,8 @@ struct GridUniquenessState {
   bool continueExpansion;
 
   // Results
-  vector<double> displacementWithGridCodeZero;
-  double displacementBaselineRadius;
+  vector<double> pointWithGridCodeZero;
+  double foundPointBaselineRadius;
 
   // Thread management
   std::mutex& mutex;
@@ -384,13 +508,13 @@ std::string vecs(const vector<double>& v)
 }
 
 void recordResult(size_t iThread, GridUniquenessState& state,
-                  const vector<double>& displacementWithGridCodeZero)
+                  const vector<double>& pointWithGridCodeZero)
 {
   state.continueExpansion = false;
-  if (state.threadBaselineRadius[iThread] < state.displacementBaselineRadius)
+  if (state.threadBaselineRadius[iThread] < state.foundPointBaselineRadius)
   {
-    state.displacementBaselineRadius = state.threadBaselineRadius[iThread];
-    state.displacementWithGridCodeZero = displacementWithGridCodeZero;
+    state.foundPointBaselineRadius = state.threadBaselineRadius[iThread];
+    state.pointWithGridCodeZero = pointWithGridCodeZero;
 
     // Notify all others that they should stop unless they're checking a lower
     // base width.
@@ -401,7 +525,7 @@ void recordResult(size_t iThread, GridUniquenessState& state,
       if (iOtherThread != iThread &&
           state.threadShouldContinue[iOtherThread] &&
           (state.threadBaselineRadius[iOtherThread] >=
-           state.displacementBaselineRadius))
+           state.foundPointBaselineRadius))
       {
         state.threadShouldContinue[iOtherThread] = false;
       }
@@ -456,12 +580,12 @@ void claimNextTask(size_t iThread, GridUniquenessState& state)
   }
 }
 
-void findDisplacementZeroThread(size_t iThread, GridUniquenessState& state)
+void findGridCodeZeroThread(size_t iThread, GridUniquenessState& state)
 {
-  bool foundGridDisplacementZero = false;
+  bool foundGridCodeZero = false;
   vector<double> x0(state.numDims);
   vector<double> dims(state.numDims);
-  vector<double> displacementWithGridCodeZero(state.numDims);
+  vector<double> pointWithGridCodeZero(state.numDims);
 
   while (!quitting)
   {
@@ -470,9 +594,9 @@ void findDisplacementZeroThread(size_t iThread, GridUniquenessState& state)
     {
       std::lock_guard<std::mutex> lock(state.mutex);
 
-      if (foundGridDisplacementZero)
+      if (foundGridCodeZero)
       {
-        recordResult(iThread, state, displacementWithGridCodeZero);
+        recordResult(iThread, state, pointWithGridCodeZero);
       }
 
       if (!state.continueExpansion)
@@ -483,16 +607,16 @@ void findDisplacementZeroThread(size_t iThread, GridUniquenessState& state)
       // Select task params.
       claimNextTask(iThread, state);
 
-      // Make an unshared copy that findDisplacementZeroHelper can modify.
+      // Make an unshared copy that findGridCodeZeroHelper can modify.
       x0 = state.threadQueryX0[iThread];
       dims = state.threadQueryDims[iThread];
     }
 
     // Perform the task.
-    foundGridDisplacementZero = findDisplacementZeroHelper(
-      state.A, state.numDims, x0.data(), dims.data(),
-      state.phaseResolution,
-      displacementWithGridCodeZero.data(), state.threadShouldContinue[iThread]);
+    foundGridCodeZero = findGridCodeZeroHelper(
+      state.domainToPlaneByModule, state.latticeBasisByModule, state.numDims,
+      x0.data(), dims.data(), state.readoutResolution,
+      pointWithGridCodeZero.data(), state.threadShouldContinue[iThread]);
   }
 
   // This thread is exiting.
@@ -508,8 +632,9 @@ void findDisplacementZeroThread(size_t iThread, GridUniquenessState& state)
 
 pair<double,vector<double>>
 nupic::experimental::grid_uniqueness::computeGridUniquenessHypercube(
-  const vector<vector<vector<double>>>& A,
-  double phaseResolution,
+  const vector<vector<vector<double>>>& domainToPlaneByModule,
+  const vector<vector<vector<double>>>& latticeBasisByModule,
+  double readoutResolution,
   double ignoredCenterDiameter)
 {
   typedef std::chrono::steady_clock Clock;
@@ -523,11 +648,15 @@ nupic::experimental::grid_uniqueness::computeGridUniquenessHypercube(
   sigIntHandler.sa_flags = 0;
   sigaction(SIGINT, &sigIntHandler, NULL);
 
-  NTA_CHECK(A[0].size() == 2)
+  NTA_CHECK(domainToPlaneByModule[0].size() == 2)
     << "Each matrix should have two rows -- the modules are two-dimensional. "
-    << "Actual: " << A[0].size();
+    << "Actual: " << domainToPlaneByModule[0].size();
 
-  const size_t numDims = A[0][0].size();
+  NTA_CHECK(latticeBasisByModule[0][0].size() == 2)
+    << "There should be two lattice basis vectors. "
+    << "Actual: " << latticeBasisByModule[0][0].size();
+
+  const size_t numDims = domainToPlaneByModule[0][0].size();
   NTA_CHECK(numDims < sizeof(int)*8)
     << "Unsupported number of dimensions: " << numDims;
 
@@ -539,8 +668,9 @@ nupic::experimental::grid_uniqueness::computeGridUniquenessHypercube(
   size_t numThreads = std::thread::hardware_concurrency();
 
   GridUniquenessState state = {
-    A,
-    phaseResolution,
+    domainToPlaneByModule,
+    latticeBasisByModule,
+    readoutResolution,
     numDims,
 
     ignoredCenterDiameter,
@@ -571,12 +701,14 @@ nupic::experimental::grid_uniqueness::computeGridUniquenessHypercube(
     std::unique_lock<std::mutex> lock(stateMutex);
     for (size_t i = 0; i < numThreads; i++)
     {
-      std::thread(findDisplacementZeroThread, i,  std::ref(state)).detach();
+      std::thread(findGridCodeZeroThread, i,  std::ref(state)).detach();
       state.numActiveThreads++;
     }
 
     const auto tStart = Clock::now();
     auto tNextPrint = tStart + std::chrono::seconds(10);
+
+    bool processingQuit = false;
 
     while (true)
     {
@@ -584,7 +716,8 @@ nupic::experimental::grid_uniqueness::computeGridUniquenessHypercube(
                                     tNextPrint) == std::cv_status::timeout)
       {
         NTA_INFO << "";
-        NTA_INFO << A.size() << " modules, " << numDims << " dimensions, "
+        NTA_INFO << domainToPlaneByModule.size() << " modules, " << numDims
+                 << " dimensions, "
                  << std::chrono::duration_cast<std::chrono::seconds>(
                    Clock::now() - tStart).count() << " seconds elapsed, "
                  << "currently querying radius " << state.expansionRadiusGoal;
@@ -605,6 +738,17 @@ nupic::experimental::grid_uniqueness::computeGridUniquenessHypercube(
           }
         }
       }
+      else if (quitting && !processingQuit)
+      {
+        // The condition_variable returned due to an interrupt. We still need to
+        // wait for threads to exit.
+        processingQuit = true;
+        for (size_t iThread = 0; iThread < state.threadBaselineRadius.size();
+             iThread++)
+        {
+          state.threadShouldContinue[iThread] = false;
+        }
+      }
       else
       {
         break;
@@ -620,5 +764,5 @@ nupic::experimental::grid_uniqueness::computeGridUniquenessHypercube(
     NTA_THROW << "Caught interrupt signal";
   }
 
-  return {state.displacementBaselineRadius, state.displacementWithGridCodeZero};
+  return {state.foundPointBaselineRadius, state.pointWithGridCodeZero};
 }
