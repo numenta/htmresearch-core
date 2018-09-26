@@ -502,6 +502,7 @@ struct GridUniquenessState {
   vector<vector<double>> threadQueryX0;
   vector<vector<double>> threadQueryDims;
   vector<std::atomic<bool>> threadShouldContinue;
+  vector<bool> threadRunning;
 };
 
 std::string vecs(const vector<double>& v)
@@ -643,6 +644,7 @@ void findGridCodeZeroThread(size_t iThread, GridUniquenessState& state)
     {
       state.finished.notify_all();
     }
+    state.threadRunning[iThread] = false;
   }
 }
 
@@ -713,7 +715,8 @@ nupic::experimental::grid_uniqueness::computeGridUniquenessHypercube(
     vector<double>(numThreads, std::numeric_limits<double>::max()),
     vector<vector<double>>(numThreads, vector<double>(numDims)),
     vector<vector<double>>(numThreads, vector<double>(numDims)),
-    vector<std::atomic<bool>>(numThreads)
+    vector<std::atomic<bool>>(numThreads),
+    vector<bool>(numThreads, true),
   };
 
   for (size_t i = 0; i < numThreads; i++)
@@ -743,22 +746,39 @@ nupic::experimental::grid_uniqueness::computeGridUniquenessHypercube(
         NTA_INFO << domainToPlaneByModule.size() << " modules, " << numDims
                  << " dimensions, "
                  << std::chrono::duration_cast<std::chrono::seconds>(
-                   Clock::now() - tStart).count() << " seconds elapsed, "
-                 << "currently querying radius " << state.expansionRadiusGoal;
+                   Clock::now() - tStart).count() << " seconds elapsed";
+
+        if (state.foundPointBaselineRadius < std::numeric_limits<double>::max())
+        {
+          NTA_INFO << "**Hypercube side length upper bound: "
+                   << state.foundPointBaselineRadius << "**";
+          NTA_INFO << "**Grid code zero found at: "
+                   << vecs(state.pointWithGridCodeZero) << "**";
+        }
+
         tNextPrint = Clock::now() + std::chrono::seconds(10);
 
         for (size_t iThread = 0; iThread < state.threadBaselineRadius.size();
              iThread++)
         {
-          if (state.threadShouldContinue[iThread])
+          if (state.threadRunning[iThread])
           {
-            NTA_INFO << "  Thread " << iThread << " is currently querying x0 "
-                     << vecs(state.threadQueryX0[iThread]) << " and dims "
-                     << vecs(state.threadQueryDims[iThread]);
+            if (state.threadShouldContinue[iThread])
+            {
+              NTA_INFO << "  Thread " << iThread
+                       << " assuming hypercube side length lower bound "
+                       << state.threadBaselineRadius[iThread] << ", querying x0 "
+                       << vecs(state.threadQueryX0[iThread]) << " and dims "
+                       << vecs(state.threadQueryDims[iThread]);
+            }
+            else
+            {
+              NTA_INFO << "  Thread " << iThread << " has been ordered to stop.";
+            }
           }
           else
           {
-            NTA_INFO << " Thread " << iThread << " has been ordered to stop.";
+            NTA_INFO << "  Thread " << iThread << " is finished.";
           }
         }
       }
