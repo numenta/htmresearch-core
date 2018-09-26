@@ -53,13 +53,11 @@ pair<double,double> transform2D(const vector<vector<double>>& M,
           M[1][0]*p.first + M[1][1]*p.second};
 }
 
-pair<double,double> inverseTransform2D(const vector<vector<double>>& M,
-                                       pair<double,double> p)
+vector<vector<double>> invert2DMatrix(const vector<vector<double>>& M)
 {
   const double detInv = 1 / (M[0][0]*M[1][1] - M[0][1]*M[1][0]);
-
-  return {detInv*M[1][1]*p.first - detInv*M[0][1]*p.second,
-          -detInv*M[1][0]*p.first + detInv*M[0][0]*p.second};
+  return {{detInv*M[1][1], -detInv*M[0][1]},
+          {-detInv*M[1][0], detInv*M[0][0]}};
 }
 
 pair<double,double> transformND(const vector<vector<double>>& M,
@@ -87,9 +85,11 @@ pair<double,double> transformND(const vector<vector<double>>& M,
 class LatticePointEnumerator
 {
 public:
-  LatticePointEnumerator(const vector<vector<double>>& latticeBasis, double x0,
-                         double y0, double width, double height)
-    :latticeBasis_(latticeBasis), x0_(x0), y0_(y0), width_(width), height_(height)
+  LatticePointEnumerator(const vector<vector<double>>& latticeBasis,
+                         const vector<vector<double>>& inverseLatticeBasis,
+                         double x0, double y0, double width, double height)
+    :latticeBasis_(latticeBasis), inverseLatticeBasis_(inverseLatticeBasis),
+     x0_(x0), y0_(y0), width_(width), height_(height)
   {
     // Find the bounding box of the rectangle in the lattice's basis.
     double xmin = std::numeric_limits<double>::max();
@@ -149,7 +149,7 @@ private:
   void updateBoundingBox_(double *xmin, double *xmax, double *ymin, double *ymax,
                           pair<double,double> planePoint) const
   {
-    const pair<double,double> q = inverseTransform2D(latticeBasis_, planePoint);
+    const pair<double,double> q = transform2D(inverseLatticeBasis_, planePoint);
     *xmin = std::min(*xmin, q.first);
     *xmax = std::max(*xmax, q.first);
     *ymin = std::min(*ymin, q.second);
@@ -157,6 +157,7 @@ private:
   }
 
   const vector<vector<double>> &latticeBasis_;
+  const vector<vector<double>> &inverseLatticeBasis_;
   const double x0_;
   const double y0_;
   const double width_;
@@ -226,6 +227,7 @@ private:
 bool tryFindGridCodeZero(
   const vector<vector<vector<double>>>& domainToPlaneByModule,
   const vector<vector<vector<double>>>& latticeBasisByModule,
+  const vector<vector<vector<double>>>& inverseLatticeBasisByModule,
   size_t numDims,
   const double x0[],
   const double dims[],
@@ -252,6 +254,7 @@ bool tryFindGridCodeZero(
         transformND(domainToPlaneByModule[iModule], vertexBuffer);
 
       LatticePointEnumerator latticePoints(latticeBasisByModule[iModule],
+                                           inverseLatticeBasisByModule[iModule],
                                            pointOnPlane.first - r,
                                            pointOnPlane.second - r, 2*r, 2*r);
 
@@ -287,6 +290,7 @@ bool tryFindGridCodeZero(
 bool tryProveGridCodeZeroImpossible(
   const vector<vector<vector<double>>>& domainToPlaneByModule,
   const vector<vector<vector<double>>>& latticeBasisByModule,
+  const vector<vector<vector<double>>>& inverseLatticeBasisByModule,
   size_t numDims,
   const double x0[],
   const double dims[],
@@ -314,6 +318,7 @@ bool tryProveGridCodeZeroImpossible(
     const double r = readoutResolution/2;
     const double rSquared = pow(r, 2);
     LatticePointEnumerator latticePoints(latticeBasisByModule[iModule],
+                                         inverseLatticeBasisByModule[iModule],
                                          xmin - r, ymin - r,
                                          (xmax - xmin) + 2*r,
                                          (ymax - ymin) + 2*r);
@@ -379,6 +384,7 @@ private:
 bool findGridCodeZeroHelper(
   const vector<vector<vector<double>>>& domainToPlaneByModule,
   const vector<vector<vector<double>>>& latticeBasisByModule,
+  const vector<vector<vector<double>>>& inverseLatticeBasisByModule,
   size_t numDims,
   double x0[],
   double dims[],
@@ -391,15 +397,17 @@ bool findGridCodeZeroHelper(
     return false;
   }
 
-  if (tryFindGridCodeZero(domainToPlaneByModule, latticeBasisByModule, numDims,
-                          x0, dims, readoutResolution, vertexBuffer))
+  if (tryFindGridCodeZero(domainToPlaneByModule, latticeBasisByModule,
+                          inverseLatticeBasisByModule, numDims, x0, dims,
+                          readoutResolution, vertexBuffer))
   {
     return true;
   }
 
   if (tryProveGridCodeZeroImpossible(domainToPlaneByModule,
-                                     latticeBasisByModule, numDims, x0, dims,
-                                     readoutResolution, vertexBuffer))
+                                     latticeBasisByModule,
+                                     inverseLatticeBasisByModule, numDims, x0,
+                                     dims, readoutResolution, vertexBuffer))
   {
     return false;
   }
@@ -410,8 +418,8 @@ bool findGridCodeZeroHelper(
     SwapValueRAII swap1(&dims[iWidestDim], dims[iWidestDim] / 2);
 
     if (findGridCodeZeroHelper(domainToPlaneByModule, latticeBasisByModule,
-                               numDims, x0, dims, readoutResolution,
-                               vertexBuffer, shouldContinue))
+                               inverseLatticeBasisByModule, numDims, x0, dims,
+                               readoutResolution, vertexBuffer, shouldContinue))
     {
       return true;
     }
@@ -419,8 +427,9 @@ bool findGridCodeZeroHelper(
     {
       SwapValueRAII swap2(&x0[iWidestDim], x0[iWidestDim] + dims[iWidestDim]);
       return findGridCodeZeroHelper(domainToPlaneByModule, latticeBasisByModule,
-                                    numDims, x0, dims, readoutResolution,
-                                    vertexBuffer, shouldContinue);
+                                    inverseLatticeBasisByModule, numDims, x0,
+                                    dims, readoutResolution, vertexBuffer,
+                                    shouldContinue);
     }
   }
 }
@@ -452,10 +461,16 @@ bool nupic::experimental::grid_uniqueness::findGridCodeZero(
 
   NTA_ASSERT(domainToPlaneByModule[0].size() == 2);
 
+  vector<vector<vector<double>>> inverseLatticeBasisByModule;
+  for (const vector<vector<double>>& latticeBasis : latticeBasisByModule)
+  {
+    inverseLatticeBasisByModule.push_back(invert2DMatrix(latticeBasis));
+  }
+
   return findGridCodeZeroHelper(
-    domainToPlaneByModule, latticeBasisByModule, dimsCopy.size(), x0Copy.data(),
-    dimsCopy.data(), readoutResolution, pointWithGridCodeZero->data(),
-    shouldContinue);
+    domainToPlaneByModule, latticeBasisByModule, inverseLatticeBasisByModule,
+    dimsCopy.size(), x0Copy.data(), dimsCopy.data(), readoutResolution,
+    pointWithGridCodeZero->data(), shouldContinue);
 }
 
 
@@ -463,6 +478,7 @@ struct GridUniquenessState {
   // Constants (thread-safe)
   const vector<vector<vector<double>>>& domainToPlaneByModule;
   const vector<vector<vector<double>>>& latticeBasisByModule;
+  const vector<vector<vector<double>>>& inverseLatticeBasisByModule;
   const double readoutResolution;
   const size_t numDims;
 
@@ -614,9 +630,10 @@ void findGridCodeZeroThread(size_t iThread, GridUniquenessState& state)
 
     // Perform the task.
     foundGridCodeZero = findGridCodeZeroHelper(
-      state.domainToPlaneByModule, state.latticeBasisByModule, state.numDims,
-      x0.data(), dims.data(), state.readoutResolution,
-      pointWithGridCodeZero.data(), state.threadShouldContinue[iThread]);
+      state.domainToPlaneByModule, state.latticeBasisByModule,
+      state.inverseLatticeBasisByModule, state.numDims, x0.data(), dims.data(),
+      state.readoutResolution, pointWithGridCodeZero.data(),
+      state.threadShouldContinue[iThread]);
   }
 
   // This thread is exiting.
@@ -660,6 +677,12 @@ nupic::experimental::grid_uniqueness::computeGridUniquenessHypercube(
   NTA_CHECK(numDims < sizeof(int)*8)
     << "Unsupported number of dimensions: " << numDims;
 
+  vector<vector<vector<double>>> inverseLatticeBasisByModule;
+  for (const vector<vector<double>>& latticeBasis : latticeBasisByModule)
+  {
+    inverseLatticeBasisByModule.push_back(invert2DMatrix(latticeBasis));
+  }
+
   // Use condition_variables to enable periodic logging while waiting for the
   // threads to finish.
   std::mutex stateMutex;
@@ -670,6 +693,7 @@ nupic::experimental::grid_uniqueness::computeGridUniquenessHypercube(
   GridUniquenessState state = {
     domainToPlaneByModule,
     latticeBasisByModule,
+    inverseLatticeBasisByModule,
     readoutResolution,
     numDims,
 
