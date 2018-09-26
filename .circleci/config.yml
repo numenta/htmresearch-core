@@ -21,13 +21,16 @@ jobs:
       - run:
           name: Restoring system python
           command: |
+            brew update
             brew uninstall python
             curl https://bootstrap.pypa.io/get-pip.py | python - --user
             echo 'export PATH=$HOME/Library/Python/2.7/bin:$PATH' >> $BASH_ENV 
       - run:
           name: Installing cmake 
-          command: brew install cmake
-      
+          command: |
+            git init `brew --repo`/Library/Taps/numenta/homebrew-build
+            brew extract cmake numenta/build --version=3.11.3
+            brew install cmake@3.11.3
       - checkout
       
       # Dependencies

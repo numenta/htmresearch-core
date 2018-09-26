@@ -25,22 +25,6 @@ project(htmresearch_core CXX)
 set_property(GLOBAL PROPERTY USE_FOLDERS ON)
 set(CMAKE_VERBOSE_MAKEFILE OFF) # toggle for cmake debug
 
-
-if( POLICY CMP0046 )
-  cmake_policy(VERSION 3.3)
-  # The new policy for add_dependencies is to now error if a dependency target
-  # is not found. The old policy didn't care and continued through configuration
-  cmake_policy(SET CMP0046 OLD)
-endif()
-
-if( POLICY CMP0054 )
-  # The OLD behavior for this policy is to dereference variables and interpret
-  # keywords even if they are quoted or bracketed. The NEW behavior is to not
-  # dereference variables or interpret keywords that have been quoted or bracketed.
-  cmake_policy(SET CMP0054 OLD)
-endif()
-
-
 #
 # NuPIC CMake options
 #
@@ -275,9 +259,8 @@ message(STATUS "src_lib_static_htmresearchcore_compile_flags = ${src_lib_static_
 
 add_library(${src_lib_static_htmresearchcore_solo} STATIC
             ${src_lib_static_htmresearchcore_srcs})
-# nupic_core_solo sources depend on headers installed by these external projects
-add_dependencies(${src_lib_static_htmresearchcore_solo}
-                 ${NUPIC_CORE_STATIC_LIB_TARGET})
+# htmresearch_core_solo sources depend on headers installed by nupic_core
+add_dependencies(${src_lib_static_htmresearchcore_solo} nupic_core)
 set_target_properties(${src_lib_static_htmresearchcore_solo} PROPERTIES COMPILE_FLAGS
                       ${src_lib_static_htmresearchcore_compile_flags})
 if(${NUPIC_IWYU})
@@ -496,7 +479,13 @@ if (NUPIC_BUILD_PYEXT_MODULES)
     #
 
     # Note: swig_add_module outputs ${swig_generated_file_fullname}
-    swig_add_module(${MODULE_NAME} python ${source_interface_file})
+    if (CMAKE_VERSION VERSION_LESS "3.8")
+      swig_add_module(${MODULE_NAME} python ${source_interface_file})
+    else ()
+      SWIG_ADD_LIBRARY(${MODULE_NAME} LANGUAGE python 
+        SOURCES ${source_interface_file})
+    endif ()
+
 
     set_source_files_properties(
       ${swig_generated_file_fullname} PROPERTIES
@@ -527,7 +516,6 @@ if (NUPIC_BUILD_PYEXT_MODULES)
       set(export_map_file
           "${CMAKE_CURRENT_BINARY_DIR}/${real_target}_generated.expmap")
 
-      list(APPEND extra_deps "${export_map_file}")
       set(link_flags "${link_flags} -Wl,--version-script=${export_map_file}")
 
       set(export_map_contents "{global: ${extension_init_func}; local: *;};")
