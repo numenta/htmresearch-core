@@ -417,82 +417,83 @@ namespace {
    * the x axis. Rotate and scale this axis to place the first collision at any
    * arbitrary point.
    */
-  vector<vector<vector<double>>> getBasisWithNearestZeroAt(double x, double y)
+  vector<vector<vector<double>>> getPlaneMatrixWithNearestZeroAt(
+    double x, double y)
   {
     const double r = sqrt(pow(x, 2) + pow(y, 2));
-    double theta = atan2(y, x);
 
     return {
       // Square
       invert2DMatrix(
-        {{r*cos(theta), r*cos(theta + M_PI/2)},
-         {r*sin(theta), r*sin(theta + M_PI/2)}}),
+        {{r, 0},
+         {0, r}}),
       // Hexagon
       invert2DMatrix(
-        {{r*cos(theta), r*cos(theta + M_PI/3)},
-         {r*sin(theta), r*sin(theta + M_PI/3)}}),
+        {{r, 0},
+         {0, r}}),
+    };
+  }
+
+  vector<vector<vector<double>>> getLatticeBasisWithNearestZeroAt(
+    double x, double y)
+  {
+    double theta = atan2(y, x);
+
+    return {
+      // Square
+      {{cos(theta), cos(theta + M_PI/2)},
+       {sin(theta), sin(theta + M_PI/2)}},
+      // Hexagon
+      {{cos(theta), cos(theta + M_PI/3)},
+       {sin(theta), sin(theta + M_PI/3)}},
     };
   }
 
   TEST(GridUniquenessTest, ComputeGridUniquenessHypercubeTestPositive)
   {
-    const vector<vector<vector<double>>> latticeBasisByModule = {
-      {{1, 0},
-       {0, 1}},
-      {{1, 0},
-       {0, 1}}
-    };
-
     // Zero to the right of the ignored area.
     EXPECT_EQ(12,
               floor(computeGridUniquenessHypercube(
-                      getBasisWithNearestZeroAt(12.5, 0.25),
-                      latticeBasisByModule,
+                      getPlaneMatrixWithNearestZeroAt(12.5, 0.25),
+                      getLatticeBasisWithNearestZeroAt(12.5, 0.25),
                       0.01, 0.5).first));
 
     // Zero upper-right of the ignored area.
     EXPECT_EQ(6,
               floor(computeGridUniquenessHypercube(
-                      getBasisWithNearestZeroAt(6.5, 6.5),
-                      latticeBasisByModule,
+                      getPlaneMatrixWithNearestZeroAt(6.5, 6.5),
+                      getLatticeBasisWithNearestZeroAt(6.5, 6.5),
                       0.01, 0.5).first));
 
     // Zero above the ignored area.
     EXPECT_EQ(12,
               floor(computeGridUniquenessHypercube(
-                      getBasisWithNearestZeroAt(0.25, 12.5),
-                      latticeBasisByModule,
+                      getPlaneMatrixWithNearestZeroAt(0.25, 12.5),
+                      getLatticeBasisWithNearestZeroAt(0.25, 12.5),
                       0.01, 0.5).first));
   }
 
   TEST(GridUniquenessTest, ComputeGridUniquenessHypercubeTestNegative)
   {
-    const vector<vector<vector<double>>> latticeBasisByModule = {
-      {{1, 0},
-       {0, 1}},
-      {{1, 0},
-       {0, 1}}
-    };
-
     // Zero to the left of the ignored area.
     EXPECT_EQ(12,
               floor(computeGridUniquenessHypercube(
-                      getBasisWithNearestZeroAt(-12.5, 0.25),
-                      latticeBasisByModule,
+                      getPlaneMatrixWithNearestZeroAt(-12.5, 0.25),
+                      getLatticeBasisWithNearestZeroAt(-12.5, 0.25),
                       0.01, 0.5).first));
 
     // Zero upper-left of the ignored area.
     EXPECT_EQ(6,
               floor(computeGridUniquenessHypercube(
-                      getBasisWithNearestZeroAt(-6.5, 6.5),
-                      latticeBasisByModule,
+                      getPlaneMatrixWithNearestZeroAt(-6.5, 6.5),
+                      getLatticeBasisWithNearestZeroAt(-6.5, 6.5),
                       0.01, 0.5).first));
 
     // Zero above the ignored area.
     EXPECT_EQ(12,
               floor(computeGridUniquenessHypercube(
-                      getBasisWithNearestZeroAt(-0.25, 12.5),
-                      latticeBasisByModule,
+                      getPlaneMatrixWithNearestZeroAt(-0.25, 12.5),
+                      getLatticeBasisWithNearestZeroAt(-0.25, 12.5),
                       0.01, 0.5).first));
   }
 
