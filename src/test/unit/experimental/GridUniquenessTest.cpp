@@ -267,6 +267,141 @@ namespace {
       findGridCodeZero(domainToPlaneByModule, latticeBasisByModule, {41.5, 41.5, 4.5}, {1.0, 1.0, 1.0}, 0.01));
   }
 
+ /**
+   * Queries rectangles that are specially selected to cause the
+   * algorithm to check a 2x2 grid of lattice points. Run 5 different
+   * tests, one where the rectangle intersects a particular lattice
+   * point, and one where it doesn't intersect any.
+   */
+  TEST(GridUniquenessTest, ChoosingLatticePoints_OutsideBoundingBox)
+  {
+    const vector<vector<vector<double>>> domainToPlaneByModule = {
+      {{1, 0},
+       {0, 1}}
+    };
+    const vector<vector<vector<double>>> latticeBasisByModule = {
+      {{cos(0), cos(M_PI/3)},
+       {sin(0), sin(M_PI/3)}}
+    };
+
+    const double readoutResolution = 0.01;
+    const double padding = 0.02;
+
+    double height = 2*sin(M_PI/3) - padding;
+    double halfWidth = 0.5 - padding;
+    double width = 2*halfWidth;
+
+    ASSERT_TRUE(
+      findGridCodeZero(domainToPlaneByModule, latticeBasisByModule,
+                       {-halfWidth, 0}, {width, height},
+                       readoutResolution));
+    ASSERT_TRUE(
+      findGridCodeZero(domainToPlaneByModule, latticeBasisByModule,
+                       {-halfWidth, -height}, {width, height},
+                       readoutResolution));
+
+    double halfHeight = sin(M_PI/3) - padding;
+    height = 2*halfHeight;
+    width = 1 - padding;
+
+    ASSERT_TRUE(
+      findGridCodeZero(domainToPlaneByModule, latticeBasisByModule,
+                       {-width, -halfHeight}, {width, height},
+                       readoutResolution));
+    ASSERT_TRUE(
+      findGridCodeZero(domainToPlaneByModule, latticeBasisByModule,
+                       {-width, -halfHeight}, {width, height},
+                       readoutResolution));
+
+    halfHeight = sin(M_PI/3) - padding;
+    height = 2*halfHeight;
+    width = 1 - 2*padding;
+    ASSERT_FALSE(
+      findGridCodeZero(domainToPlaneByModule, latticeBasisByModule,
+                       {padding, -halfHeight}, {width, height},
+                       readoutResolution));
+  }
+
+  TEST(GridUniquenessTest, ChoosingLatticePoints_WithinBoundingBoxButNotPolygon)
+  {
+    const vector<vector<vector<double>>> latticeBasisByModule = {
+      {{1, 0},
+       {0, 1}}
+    };
+
+    const double readoutResolution = 0.01;
+    const double padding = 0.02;
+
+    for (int iRotation = 0; iRotation < 4; iRotation++)
+    {
+      const vector<vector<vector<double>>> domainToPlaneByModule = {
+        {{cos(iRotation*(M_PI/2) + M_PI/4), cos((iRotation+1)*(M_PI/2) + M_PI/4)},
+         {sin(iRotation*(M_PI/2) + M_PI/4), sin((iRotation+1)*(M_PI/2) + M_PI/4)}}
+      };
+
+      double width = sqrt(2) - 2*padding;
+      double height = sqrt(2) - padding;
+      ASSERT_TRUE(
+        findGridCodeZero(domainToPlaneByModule, latticeBasisByModule,
+                         {-width/2, 0}, {width, height},
+                         readoutResolution));
+
+      width = sqrt(2) - 2*padding;
+      height = sqrt(2) - 2*padding;
+      ASSERT_FALSE(
+        findGridCodeZero(domainToPlaneByModule, latticeBasisByModule,
+                         {-width/2, padding}, {width, height},
+                         readoutResolution));
+    }
+  }
+
+  /**
+   * Lattice points that are inside the bounding box when the bounding
+   * box is expanded, but where the circles centered at the lattice
+   * points don't intersect the non-expanded bounding box.
+   */
+  TEST(GridUniquenessTest, ChoosingLatticePoints_RoundedCorners)
+  {
+    const vector<vector<vector<double>>> latticeBasisByModule = {
+      {{1, 0},
+       {0, 1}}
+    };
+    const vector<vector<vector<double>>> domainToPlaneByModule = {
+      {{1, 0},
+       {0, 1}}
+    };
+
+    const double readoutResolution = 0.1;
+    const double smallPadding = (readoutResolution/2) / sqrt(2) - 0.01;
+    const double largePadding = (readoutResolution/2) / sqrt(2) + 0.01;
+    const double sideLength = 1 - smallPadding - largePadding;
+
+    ASSERT_TRUE(
+      findGridCodeZero(domainToPlaneByModule, latticeBasisByModule,
+                       {smallPadding, smallPadding}, {sideLength, sideLength},
+                       readoutResolution));
+    ASSERT_TRUE(
+      findGridCodeZero(domainToPlaneByModule, latticeBasisByModule,
+                       {-1 + largePadding, smallPadding}, {sideLength, sideLength},
+                       readoutResolution));
+    ASSERT_TRUE(
+      findGridCodeZero(domainToPlaneByModule, latticeBasisByModule,
+                       {-1 + largePadding, -1 + largePadding},
+                       {sideLength, sideLength},
+                       readoutResolution));
+    ASSERT_TRUE(
+      findGridCodeZero(domainToPlaneByModule, latticeBasisByModule,
+                       {smallPadding, -1 + largePadding},
+                       {sideLength, sideLength},
+                       readoutResolution));
+
+    ASSERT_FALSE(
+      findGridCodeZero(domainToPlaneByModule, latticeBasisByModule,
+                       {largePadding, largePadding},
+                       {1 - 2*largePadding, 1 - 2*largePadding},
+                       readoutResolution));
+  }
+
   vector<vector<double>> invert2DMatrix(const vector<vector<double>>& M)
   {
     const double detInv = 1 / (M[0][0]*M[1][1] - M[0][1]*M[1][0]);
@@ -290,8 +425,8 @@ namespace {
     return {
       // Square
       invert2DMatrix(
-        {{r*cos(theta), r*cos(theta + M_PI/4)},
-         {r*sin(theta), r*sin(theta + M_PI/4)}}),
+        {{r*cos(theta), r*cos(theta + M_PI/2)},
+         {r*sin(theta), r*sin(theta + M_PI/2)}}),
       // Hexagon
       invert2DMatrix(
         {{r*cos(theta), r*cos(theta + M_PI/3)},
@@ -387,9 +522,9 @@ namespace {
        {0, 1}}
     };
 
-    const vector<vector<vector<double>>> torusToPlaneByModule = {
-      invert2DMatrix({{cos(0), cos(M_PI/3)},
-                      {sin(0), sin(M_PI/3)}})
+    const vector<vector<vector<double>>> latticeBasisByModule = {
+      {{cos(0), cos(M_PI/3)},
+       {sin(0), sin(M_PI/3)}}
     };
 
     const double sideLength = 0.1;
@@ -414,7 +549,7 @@ namespace {
       torusPoint1OnPlane[0] + 0.01,
       torusPoint1OnPlane[1] + 0.01,
     };
-    ASSERT_FALSE(findGridCodeZero(domainToPlaneByModule, torusToPlaneByModule, corner1A,
+    ASSERT_FALSE(findGridCodeZero(domainToPlaneByModule, latticeBasisByModule, corner1A,
                                   {sideLength, sideLength}, readoutResolution));
 
     // Test 1B
@@ -422,7 +557,7 @@ namespace {
       planePoint1[0] + (torusPoint1OnPlane[0] - planePoint1[0])/2,
       planePoint1[1] + (torusPoint1OnPlane[1] - planePoint1[1])/2
     };
-    ASSERT_FALSE(findGridCodeZero(domainToPlaneByModule, torusToPlaneByModule, corner1B,
+    ASSERT_FALSE(findGridCodeZero(domainToPlaneByModule, latticeBasisByModule, corner1B,
                                   {sideLength, sideLength}, readoutResolution));
 
     // Test 1D
@@ -430,7 +565,7 @@ namespace {
       planePoint1[0] - 0.01,
       planePoint1[1] - 0.01,
     };
-    ASSERT_TRUE(findGridCodeZero(domainToPlaneByModule, torusToPlaneByModule, corner1D,
+    ASSERT_TRUE(findGridCodeZero(domainToPlaneByModule, latticeBasisByModule, corner1D,
                                  {sideLength, sideLength}, readoutResolution));
 
     //
@@ -452,7 +587,7 @@ namespace {
       planePoint2[0] - 0.01 - sideLength,
       planePoint2[1] + 0.01,
     };
-    ASSERT_FALSE(findGridCodeZero(domainToPlaneByModule, torusToPlaneByModule, corner2A,
+    ASSERT_FALSE(findGridCodeZero(domainToPlaneByModule, latticeBasisByModule, corner2A,
                                   {sideLength, sideLength}, readoutResolution));
 
     // Test 2C
@@ -460,7 +595,7 @@ namespace {
       planePoint2[0] + (torusPoint2OnPlane[0] - planePoint2[0])/2 - sideLength,
       planePoint2[1] + (torusPoint2OnPlane[1] - planePoint2[1])/2
     };
-    ASSERT_TRUE(findGridCodeZero(domainToPlaneByModule, torusToPlaneByModule, corner2C,
+    ASSERT_TRUE(findGridCodeZero(domainToPlaneByModule, latticeBasisByModule, corner2C,
                                  {sideLength, sideLength}, readoutResolution));
 
     // Test 2D
@@ -468,7 +603,7 @@ namespace {
       torusPoint2OnPlane[0] + 0.01 - sideLength,
       torusPoint2OnPlane[1] - 0.01,
     };
-    ASSERT_TRUE(findGridCodeZero(domainToPlaneByModule, torusToPlaneByModule, corner2D,
+    ASSERT_TRUE(findGridCodeZero(domainToPlaneByModule, latticeBasisByModule, corner2D,
                                  {sideLength, sideLength}, readoutResolution));
   }
 

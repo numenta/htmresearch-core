@@ -130,7 +130,7 @@ public:
         j_ += 1.0;
       }
 
-      if (j_ >= jmax_)
+      if (j_ > jmax_)
       {
         i_ += 1.0;
         j_ = jmin_;
