@@ -78,97 +78,185 @@ pair<double,double> transformND(const vector<vector<double>>& M,
   return result;
 }
 
-
 /**
- * Enumerate the points of a lattice within a specified rectangle.
+ * Enumerate the points of a lattice near or within a specified rectangle. This
+ * is equivalent to checking whether any circles centered on the points of a
+ * lattice overlap the rectangle.
  */
 class LatticePointEnumerator
 {
 public:
   LatticePointEnumerator(const vector<vector<double>>& latticeBasis,
                          const vector<vector<double>>& inverseLatticeBasis,
-                         double x0, double y0, double width, double height)
-    :latticeBasis_(latticeBasis), inverseLatticeBasis_(inverseLatticeBasis),
-     x0_(x0), y0_(y0), width_(width), height_(height)
+                         double x0, double y0, double width, double height, double r)
+    :latticeBasis_(latticeBasis), x0_(x0), y0_(y0), width_(width),
+     height_(height), rSquared_(pow(r, 2))
   {
     // Find the bounding box of the rectangle in the lattice's basis.
     double xmin = std::numeric_limits<double>::max();
     double xmax = std::numeric_limits<double>::lowest();
-    double ymin = std::numeric_limits<double>::max();
-    double ymax = std::numeric_limits<double>::lowest();
-    updateBoundingBox_(&xmin, &xmax, &ymin, &ymax, {x0, y0});
-    updateBoundingBox_(&xmin, &xmax, &ymin, &ymax, {x0 + width, y0});
-    updateBoundingBox_(&xmin, &xmax, &ymin, &ymax, {x0, y0 + height});
-    updateBoundingBox_(&xmin, &xmax, &ymin, &ymax, {x0 + width, y0 + height});
+    pair<double, double> ij;
+    ij = transform2D(inverseLatticeBasis, {x0 - r, y0 - r});
+    xmin = std::min(xmin, ij.first);
+    xmax = std::max(xmax, ij.first);
+    ij = transform2D(inverseLatticeBasis, {x0 + width + r, y0 - r});
+    xmin = std::min(xmin, ij.first);
+    xmax = std::max(xmax, ij.first);
+    ij = transform2D(inverseLatticeBasis, {x0 - r, y0 + height + r});
+    xmin = std::min(xmin, ij.first);
+    xmax = std::max(xmax, ij.first);
+    ij = transform2D(inverseLatticeBasis, {x0 + width + r, y0 + height + r});
+    xmin = std::min(xmin, ij.first);
+    xmax = std::max(xmax, ij.first);
 
-    // For each integer pair that's in this rectangle, project it back into
-    // domain coordinates. If it's within the original rectangle, return it.
-    imin_ = ceil(xmin);
-    imax_ = floor(xmax);
-    jmin_ = ceil(ymin);
-    jmax_ = floor(ymax);
-    i_ = imin_;
-    j_ = jmin_;
+    iMin_ = ceil(xmin);
+    iMax_ = floor(xmax);
+
+    ij = transform2D(inverseLatticeBasis, {x0, y0});
+    iStart_ = floor(ij.first);
+    jStart_ = floor(ij.second);
+
+    this->restart();
   }
 
   bool getNext(pair<double,double> *out)
   {
-    bool found = false;
-    while (!found && i_ <= imax_)
-    {
-      while (!found && j_ <= jmax_)
-      {
-        pair<double, double> p = transform2D(latticeBasis_, {i_, j_});
+    bool foundContainedPoint = false;
 
-        if (p.first >= x0_ && p.first <= x0_ + width_ &&
-            p.second >= y0_ && p.second <= y0_ + height_)
+    while (!foundContainedPoint && i_ <= iMax_)
+    {
+      const pair<double, double> p = transform2D(latticeBasis_, {i_, j_});
+
+      const double nearestX = std::max(x0_,
+                                       std::min(p.first,
+                                                x0_ + width_));
+      const double nearestY = std::max(y0_,
+                                       std::min(p.second,
+                                                y0_ + height_));
+
+      const double dSquared = (pow(p.first - nearestX, 2) +
+                               pow(p.second - nearestY, 2));
+
+      if (j_ == j0_)
+      {
+        dSquared_j0_ = dSquared;
+      }
+
+      if (dSquared < innerSweepMin_)
+      {
+        innerSweepMin_ = dSquared;
+        jForInnerSweepMin_ = j_;
+      }
+
+      foundContainedPoint = (dSquared <= rSquared_);
+      if (foundContainedPoint)
+      {
+        *out = p;
+      }
+
+      // If we're moving away from the box, end this part of the inner sweep.
+      const bool endInnerSweep = (!foundContainedPoint &&
+                                  dSquared >= dSquaredPrev_);
+
+      if (endInnerSweep)
+      {
+        if (sweepingDown_)
         {
-          found = true;
-          *out = p;
+          sweepingDown_ = false;
+
+          j_ = j0_ + 1;
+          dSquaredPrev_ = dSquared_j0_;
+        }
+        else
+        {
+          if (i_ == iStart_)
+          {
+            jForInnerSweepMin_i0_ = jForInnerSweepMin_;
+          }
+
+          if (sweepingLeft_)
+          {
+            if (--i_ < iMin_)
+            {
+              sweepingLeft_ = false;
+              i_ = iStart_ + 1;
+
+              j0_ = jForInnerSweepMin_i0_;
+              j_ = j0_;
+            }
+            else
+            {
+              j0_ = jForInnerSweepMin_;
+              j_ = j0_;
+            }
+          }
+          else
+          {
+            ++i_;
+            j0_ = jForInnerSweepMin_;
+            j_ = j0_;
+          }
+
+          sweepingDown_ = true;
+          innerSweepMin_ = std::numeric_limits<double>::max();
+          dSquaredPrev_ = std::numeric_limits<double>::max();
+        }
+      }
+      else
+      {
+        if (sweepingDown_)
+        {
+          j_ -= 1;
+        }
+        else
+        {
+          j_ += 1;
         }
 
-        j_ += 1.0;
-      }
-
-      if (j_ > jmax_)
-      {
-        i_ += 1.0;
-        j_ = jmin_;
+        dSquaredPrev_ = dSquared;
       }
     }
-    return found;
+
+    return foundContainedPoint;
   }
 
   void restart()
   {
-    i_ = imin_;
-    j_ = jmin_;
+    dSquaredPrev_ = std::numeric_limits<double>::max();
+    innerSweepMin_ = std::numeric_limits<double>::max();
+    i_ = iStart_;
+    j_ = j0_ = jStart_;
+    finished_ = false;
+    sweepingLeft_ = true;
+    sweepingDown_ = true;
   }
 
 private:
-  void updateBoundingBox_(double *xmin, double *xmax, double *ymin, double *ymax,
-                          pair<double,double> planePoint) const
-  {
-    const pair<double,double> q = transform2D(inverseLatticeBasis_, planePoint);
-    *xmin = std::min(*xmin, q.first);
-    *xmax = std::max(*xmax, q.first);
-    *ymin = std::min(*ymin, q.second);
-    *ymax = std::max(*ymax, q.second);
-  }
 
   const vector<vector<double>> &latticeBasis_;
-  const vector<vector<double>> &inverseLatticeBasis_;
   const double x0_;
   const double y0_;
   const double width_;
   const double height_;
+  const double rSquared_;
 
-  double imin_;
-  double imax_;
-  double jmin_;
-  double jmax_;
-  double i_;
-  double j_;
+  double dSquaredPrev_;
+  double innerSweepMin_;
+  long long jForInnerSweepMin_;
+  long long jForInnerSweepMin_i0_;
+  double dSquared_j0_;
+
+  bool finished_;
+  bool sweepingLeft_;
+  bool sweepingDown_;
+
+  long long iStart_;
+  long long jStart_;
+  long long i_;
+  long long j_;
+  long long j0_;
+  long long iMin_;
+  long long iMax_;
 };
 
 /**
@@ -255,8 +343,8 @@ bool tryFindGridCodeZero(
 
       LatticePointEnumerator latticePoints(latticeBasisByModule[iModule],
                                            inverseLatticeBasisByModule[iModule],
-                                           pointOnPlane.first - r,
-                                           pointOnPlane.second - r, 2*r, 2*r);
+                                           pointOnPlane.first,
+                                           pointOnPlane.second, 0, 0, r);
 
       bool isZero = false;
 
@@ -297,9 +385,12 @@ bool tryProveGridCodeZeroImpossible(
   double readoutResolution,
   double vertexBuffer[])
 {
+  const double r = readoutResolution/2;
+
   HyperrectangleVertexEnumerator vertices(x0, dims, numDims);
   for (size_t iModule = 0; iModule < domainToPlaneByModule.size(); iModule++)
   {
+    // Figure out which lattice points we need to check.
     double xmin = std::numeric_limits<double>::max();
     double xmax = std::numeric_limits<double>::lowest();
     double ymin = std::numeric_limits<double>::max();
@@ -307,41 +398,30 @@ bool tryProveGridCodeZeroImpossible(
     vertices.restart();
     while (vertices.getNext(vertexBuffer))
     {
-      pair<double,double> phase = transformND(domainToPlaneByModule[iModule],
-                                              vertexBuffer);
-      xmin = std::min(xmin, phase.first);
-      xmax = std::max(xmax, phase.first);
-      ymin = std::min(ymin, phase.second);
-      ymax = std::max(ymax, phase.second);
+      const pair<double,double> p = transformND(domainToPlaneByModule[iModule],
+                                                vertexBuffer);
+      xmin = std::min(xmin, p.first);
+      xmax = std::max(xmax, p.first);
+      ymin = std::min(ymin, p.second);
+      ymax = std::max(ymax, p.second);
     }
-
-    const double r = readoutResolution/2;
-    const double rSquared = pow(r, 2);
     LatticePointEnumerator latticePoints(latticeBasisByModule[iModule],
                                          inverseLatticeBasisByModule[iModule],
-                                         xmin - r, ymin - r,
-                                         (xmax - xmin) + 2*r,
-                                         (ymax - ymin) + 2*r);
+                                         xmin, ymin, (xmax - xmin), (ymax - ymin),
+                                         r);
+
     pair<double, double> latticePoint;
     bool foundLatticeCollision = false;
     while (!foundLatticeCollision && latticePoints.getNext(&latticePoint))
     {
-      // Test the circle centered at this lattice point to see if it overlaps
-      // with the provided rectangle.
-
-      // Find the point on the rectangle that is nearest to the circle.
-      const double nearestX = std::max(xmin,
-                                       std::min(latticePoint.first,
-                                                xmax));
-      const double nearestY = std::max(ymin,
-                                       std::min(latticePoint.second,
-                                                ymax));
-
-      if (pow(latticePoint.first - nearestX, 2) +
-          pow(latticePoint.second - nearestY, 2) < rSquared)
-      {
-        foundLatticeCollision = true;
-      }
+      // At this point, there might not actually be a lattice collision. The
+      // bounding box collides with a lattice point, but it might not collide
+      // with the actual polygon. However, we can just lazily assume that it
+      // collided. If it didn't actually, this function will get called again
+      // with a smaller box, and eventually the space will be broken into
+      // sufficiently small boxes that each of them have no overlap with the
+      // lattice of at least one module.
+      foundLatticeCollision = true;
     }
 
     if (!foundLatticeCollision)
@@ -648,6 +728,60 @@ void findGridCodeZeroThread(size_t iThread, GridUniquenessState& state)
   }
 }
 
+pair<double,double> rotateClockwise(double theta, double x, double y)
+{
+  return {cos(theta)*x + sin(theta)*y,
+          -sin(theta)*x + cos(theta)*y};
+}
+
+/**
+ * Change the matrices so that movement tends to be along the x axis on the
+ * plane. The end result is the same, but this improves performance because we
+ * draw bounding boxes around the projected hyperrectangles. This is especially
+ * beneficial in 1D, totally eliminating diagonal motion so that the bounding
+ * box perfectly encloses the projected line.
+ */
+void optimizeMatrices(vector<vector<vector<double>>> *domainToPlaneByModule,
+                      vector<vector<vector<double>>> *latticeBasisByModule)
+{
+  for (size_t iModule = 0; iModule < domainToPlaneByModule->size(); iModule++)
+  {
+    vector<vector<double>> &domainToPlane = (*domainToPlaneByModule)[iModule];
+    vector<vector<double>> &latticeBasis = (*latticeBasisByModule)[iModule];
+
+    size_t iLongest = (size_t) -1;
+    double dLongest = std::numeric_limits<double>::max();
+    for (size_t iColumn = 0; iColumn < domainToPlane[0].size(); iColumn++)
+    {
+      double length = sqrt(pow(domainToPlane[0][iColumn], 2) +
+                           pow(domainToPlane[1][iColumn], 2));
+      if (length < dLongest)
+      {
+        dLongest = length;
+        iLongest = iColumn;
+      }
+    }
+
+    const double theta = atan2(domainToPlane[1][iLongest],
+                               domainToPlane[0][iLongest]);
+    for (size_t iColumn = 0; iColumn < domainToPlane[0].size(); iColumn++)
+    {
+      const pair<double, double> newColumn = rotateClockwise(theta,
+                                                             domainToPlane[0][iColumn],
+                                                             domainToPlane[1][iColumn]);
+      domainToPlane[0][iColumn] = newColumn.first;
+      domainToPlane[1][iColumn] = newColumn.second;
+    }
+    for (size_t iColumn = 0; iColumn < latticeBasis[0].size(); iColumn++)
+    {
+      const pair<double, double> newColumn = rotateClockwise(theta,
+                                                             latticeBasis[0][iColumn],
+                                                             latticeBasis[1][iColumn]);
+      latticeBasis[0][iColumn] = newColumn.first;
+      latticeBasis[1][iColumn] = newColumn.second;
+    }
+  }
+}
 
 pair<double,vector<double>>
 nupic::experimental::grid_uniqueness::computeGridUniquenessHypercube(
@@ -667,6 +801,11 @@ nupic::experimental::grid_uniqueness::computeGridUniquenessHypercube(
   sigIntHandler.sa_flags = 0;
   sigaction(SIGINT, &sigIntHandler, NULL);
 
+  NTA_CHECK(domainToPlaneByModule.size() == latticeBasisByModule.size())
+    << "The two arrays of matrices must be the same length (one per module) "
+    << "Actual: " << domainToPlaneByModule.size()
+    << " " << latticeBasisByModule.size();
+
   NTA_CHECK(domainToPlaneByModule[0].size() == 2)
     << "Each matrix should have two rows -- the modules are two-dimensional. "
     << "Actual: " << domainToPlaneByModule[0].size();
@@ -679,8 +818,12 @@ nupic::experimental::grid_uniqueness::computeGridUniquenessHypercube(
   NTA_CHECK(numDims < sizeof(int)*8)
     << "Unsupported number of dimensions: " << numDims;
 
+  vector<vector<vector<double>>> domainToPlaneByModule2(domainToPlaneByModule);
+  vector<vector<vector<double>>> latticeBasisByModule2(latticeBasisByModule);
+  optimizeMatrices(&domainToPlaneByModule2, &latticeBasisByModule2);
+
   vector<vector<vector<double>>> inverseLatticeBasisByModule;
-  for (const vector<vector<double>>& latticeBasis : latticeBasisByModule)
+  for (const vector<vector<double>>& latticeBasis : latticeBasisByModule2)
   {
     inverseLatticeBasisByModule.push_back(invert2DMatrix(latticeBasis));
   }
@@ -693,8 +836,8 @@ nupic::experimental::grid_uniqueness::computeGridUniquenessHypercube(
   size_t numThreads = std::thread::hardware_concurrency();
 
   GridUniquenessState state = {
-    domainToPlaneByModule,
-    latticeBasisByModule,
+    domainToPlaneByModule2,
+    latticeBasisByModule2,
     inverseLatticeBasisByModule,
     readoutResolution,
     numDims,

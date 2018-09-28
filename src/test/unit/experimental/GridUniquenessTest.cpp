@@ -402,6 +402,32 @@ namespace {
                        readoutResolution));
   }
 
+  TEST(GridUniquenessTest, LatticePointsAtHighNumbers)
+  {
+    const vector<vector<vector<double>>> domainToPlaneByModule = {
+      {{1.0}, {0.0}},
+      {{0.7071067811865475}, {0.0}},
+      {{0.4999999999999999}, {0.0}},
+      {{0.3535533905932737}, {0.0}}
+    };
+
+   const vector<vector<vector<double>>> latticeBasisByModule = {
+     {{0.9692380902788696, 0.27146852727840026},
+      {0.24612501772995293, 0.9624473173619927}},
+     {{0.646673658192444, -0.337238590405595},
+      {0.762766792538848, 0.9414192122222954}},
+     {{0.9571341168044603, 0.22772704597058202},
+      {0.2896450974018824, 0.9737250086823859}},
+     {{0.9999617640982025, 0.4924077217967222},
+      {0.00874473222065453, 0.8703646566324725}}
+   };
+
+   findGridCodeZero(domainToPlaneByModule, latticeBasisByModule,
+                    {3.62142e+09},
+                    {3.62142e+07},
+                    0.2);
+  };
+
   vector<vector<double>> invert2DMatrix(const vector<vector<double>>& M)
   {
     const double detInv = 1 / (M[0][0]*M[1][1] - M[0][1]*M[1][0]);
