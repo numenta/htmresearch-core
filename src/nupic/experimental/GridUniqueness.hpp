@@ -36,34 +36,20 @@ namespace nupic {
     namespace grid_uniqueness {
 
       /**
-       * Determine whether any displacements in a k-dimensional rectangle would
-       * result in an unmodified grid cell representation.
+       * Determine whether any points in a k-dimensional rectangle have a grid
+       * code equal to the grid code at the origin.
        *
-       * Rather than looking for collisions between individual grid cell
-       * representations, this looks for displacements don't change the grid
-       * cell representation -- it looks for "grid displacement zero". For
-       * example, if this function says there's a grid displacement zero at
-       * displacement (42.0, 42.0), that implies that at any location, if you
-       * move up 42.0 units and right 42.0 units, your grid cells will activate
-       * the same location representation as they activated where you
-       * started. On the other hand, if there's not a grid displacement zero at
-       * a particular displacement, then that displacement will always result in
-       * a different representation from where you started.
+       * If this function says there's a grid code zero at point (42.0, 42.0),
+       * that implies that every location has the same grid code as the location
+       * that is 42.0 units up and 42.0 units right.
        *
        * This function uses a recursive "divide and conquer" algorithm. It first
-       * quickly samples a few displacements to see if any of them have grid
-       * displacement zero. Then it tries to prove that grid displacement zero
-       * can't possibly happen in this hyperrectangle by showing that at least
-       * one module never has displacement zero for any displacement in this
-       * hyperrectangle. Finally, if neither attempt succeeds, it divides the
-       * hyperrectangle in half, and then it tries again on both halves.
-       *
-       * @param A
-       * A vector of matrices, one per grid cell module. Given that the grid
-       * cells are encoding k-dimensional variables, each matrix should have 2
-       * rows and k columns. Each column represents a dimension, describing how
-       * a movement along that dimension should change the active phase of the
-       * 2D module.
+       * quickly samples a few points to see if any of them have grid code zero.
+       * Then it tries to prove that grid code zero can't possibly happen in
+       * this hyperrectangle by showing that at least one module never has grid
+       * code zero for any point in this hyperrectangle. Finally, if neither
+       * attempt succeeds, it divides the hyperrectangle in half, and then it
+       * tries again on both halves.
        *
        * @param x0
        * The lowest corner of the k-dimensional rectangle that will be searched.
@@ -71,24 +57,20 @@ namespace nupic {
        * @param dims
        * The dimensions of the k-dimensional rectangle that will be searched.
        *
-       * @param phaseResolution
-       * The precision of phase readout of this grid code. For example, if this
-       * is 0.2, then all phases are indistinguishable from those in their
-       * surrounding +- 0.1 range.
-       *
-       * @param displacementWithGridCodeZero
-       * Output parameter. A physical displacement with grid code zero in this
-       * hyperrectangle. Only populated if the function returns true.
+       * @param pointWithGridCodeZero
+       * Output parameter. A point with grid code zero in this hyperrectangle.
+       * Only populated if the function returns true.
        *
        * @return
-       * true if grid displacement zero is found, false otherwise.
+       * true if grid code zero is found, false otherwise.
        */
-      bool findGridDisplacementZero(
-        const std::vector<std::vector<std::vector<Real64>>>& A,
+      bool findGridCodeZero(
+        const std::vector<std::vector<std::vector<Real64>>>& domainToPlaneByModule,
+        const std::vector<std::vector<std::vector<Real64>>>& latticeBasisByModule,
         const std::vector<Real64>& x0,
         const std::vector<Real64>& dims,
-        Real64 phaseResolution,
-        std::vector<Real64>& displacementWithGridCodeZero);
+        Real64 readoutResolution,
+        std::vector<Real64>* pointWithGridCodeZero = nullptr);
 
       /**
        * Given a set of grid cell module parameters, determines the diameter of
@@ -96,39 +78,57 @@ namespace nupic {
        * representation.
        *
        * This function iteratively builds out a larger hypercube out of smaller
-       * hyperrectangles, relying on findGridDisplacementZero to analyze each
+       * hyperrectangles, relying on findGridCodeZero to analyze each
        * hyperrectangle. The hypercube expands outward from the origin, forming
        * a larger hypercube that contains positive and negative numbers. After
-       * the nearest grid displacement zero is found, we divide the hypercube in
-       * half to get a hypercube in which every location is guaranteed to be
-       * unique (rather than just being different from the starting
-       * location). The returned diameter is the diameter of this smaller
-       * hypercube.
+       * the nearest grid code zero is found, we divide the hypercube in half to
+       * get a hypercube in which every location is guaranteed to be unique
+       * (rather than just being different from the starting location). The
+       * returned diameter is the diameter of this smaller hypercube.
        *
-       * @param A
-       * A vector of matrices, one per grid cell module. Given that the grid
-       * cells are encoding k-dimensional variables, each matrix should have 2
-       * rows and k columns. Each column represents a dimension, describing how
-       * a movement along that dimension should change the active phase of the
-       * 2D module.
+       * Each grid cell module is specified by a pair of matrices. The first one
+       * projects a k-dimensional point to a 2D plane, and the second matrix
+       * specifies the basis of the grid lattice on this plane, specifying which
+       * points on the plane have equivalent grid codes. The distance between
+       * two grid codes is equal to the shortest distance between them on the
+       * plane. The readout resolution parameter is measured in units of this
+       * distance.
        *
-       * @param phaseResolution
-       * The precision of phase readout of this grid code. For example, if this
-       * is 0.2, then all phases are indistinguishable from those in their
-       * surrounding +- 0.1 range.
+       * There's not a strictly "correct" way to configure these matrices and
+       * the readout resolution, but a typical way is to use unit vectors as
+       * lattice basis vectors, use a plane projection that normalizes distances
+       * so that 1 unit is 1 "scale", and then set the readout resolution to
+       * some number in the range (0, 1) so that it is measured in units of
+       * "scales".
+       *
+       * @param domainToPlaneByModule
+       * A list of 2*k matrices, one per module. The matrix converts from a
+       * point in the domain to a point on a plane, normalizing for grid cell
+       * scale.
+       *
+       * @param latticeBasisByModule
+       * A list of m 2*2 matrices, one per module. This matrix contains the
+       * basis vectors for a lattice, specifying which points on the plane have
+       * equivalent location representations in this module.
+       *
+       * @param readoutResolution
+       * The precision of readout of this grid code, measured in distance on the
+       * plane. For example, if this is 0.2, then all points on the plane are
+       * indistinguishable from those in their surrounding +- 0.1 range.
        *
        * @param ignoredCenterDiameter
        * The diameter of the hypercube at the center which should be ignored,
-       * because it contains the *actual* displacement zero. Set this to be
+       * because it contains the *actual* grid code zero. Set this to be
        * sufficiently large to get away from this actual zero.
        *
        * @return
        * - The diameter of the hypercube that contains no collisions.
-       * - A displacement just outside this hypercube that causes a collision.
+       * - A point just outside this hypercube that collides with the origin.
        */
       std::pair<Real64,std::vector<Real64>> computeGridUniquenessHypercube(
-        const std::vector<std::vector<std::vector<Real64>>>& A,
-        Real64 phaseResolution,
+        const std::vector<std::vector<std::vector<Real64>>>& domainToPlaneByModule,
+        const std::vector<std::vector<std::vector<Real64>>>& latticeBasisByModule,
+        Real64 readoutResolution,
         Real64 ignoredCenterDiameter);
     }
   }
