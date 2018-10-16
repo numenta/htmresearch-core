@@ -514,46 +514,6 @@ bool findGridCodeZeroHelper(
   }
 }
 
-bool nupic::experimental::grid_uniqueness::findGridCodeZero(
-  const vector<vector<vector<double>>>& domainToPlaneByModule,
-  const vector<vector<vector<double>>>& latticeBasisByModule,
-  const vector<double>& x0,
-  const vector<double>& dims,
-  double readoutResolution,
-  vector<double>* pointWithGridCodeZero)
-{
-  // Avoid doing any allocations in each recursion.
-  vector<double> x0Copy(x0);
-  vector<double> dimsCopy(dims);
-  std::atomic<bool> shouldContinue(true);
-
-  vector<double> defaultPointBuffer;
-
-  if (pointWithGridCodeZero != nullptr)
-  {
-    NTA_ASSERT(pointWithGridCodeZero->size() == dims.size());
-  }
-  else
-  {
-    defaultPointBuffer.resize(dims.size());
-    pointWithGridCodeZero = &defaultPointBuffer;
-  }
-
-  NTA_ASSERT(domainToPlaneByModule[0].size() == 2);
-
-  vector<vector<vector<double>>> inverseLatticeBasisByModule;
-  for (const vector<vector<double>>& latticeBasis : latticeBasisByModule)
-  {
-    inverseLatticeBasisByModule.push_back(invert2DMatrix(latticeBasis));
-  }
-
-  return findGridCodeZeroHelper(
-    domainToPlaneByModule, latticeBasisByModule, inverseLatticeBasisByModule,
-    dimsCopy.size(), x0Copy.data(), dimsCopy.data(), readoutResolution,
-    pointWithGridCodeZero->data(), shouldContinue);
-}
-
-
 struct GridUniquenessState {
   // Constants (thread-safe)
   const vector<vector<vector<double>>>& domainToPlaneByModule;
@@ -781,6 +741,49 @@ void optimizeMatrices(vector<vector<vector<double>>> *domainToPlaneByModule,
       latticeBasis[1][iColumn] = newColumn.second;
     }
   }
+}
+
+bool nupic::experimental::grid_uniqueness::findGridCodeZero(
+  const vector<vector<vector<double>>>& domainToPlaneByModule,
+  const vector<vector<vector<double>>>& latticeBasisByModule,
+  const vector<double>& x0,
+  const vector<double>& dims,
+  double readoutResolution,
+  vector<double>* pointWithGridCodeZero)
+{
+  // Avoid doing any allocations in each recursion.
+  vector<double> x0Copy(x0);
+  vector<double> dimsCopy(dims);
+  std::atomic<bool> shouldContinue(true);
+
+  vector<double> defaultPointBuffer;
+
+  if (pointWithGridCodeZero != nullptr)
+  {
+    NTA_ASSERT(pointWithGridCodeZero->size() == dims.size());
+  }
+  else
+  {
+    defaultPointBuffer.resize(dims.size());
+    pointWithGridCodeZero = &defaultPointBuffer;
+  }
+
+  NTA_ASSERT(domainToPlaneByModule[0].size() == 2);
+
+  vector<vector<vector<double>>> domainToPlaneByModule2(domainToPlaneByModule);
+  vector<vector<vector<double>>> latticeBasisByModule2(latticeBasisByModule);
+  optimizeMatrices(&domainToPlaneByModule2, &latticeBasisByModule2);
+
+  vector<vector<vector<double>>> inverseLatticeBasisByModule;
+  for (const vector<vector<double>>& latticeBasis : latticeBasisByModule2)
+  {
+    inverseLatticeBasisByModule.push_back(invert2DMatrix(latticeBasis));
+  }
+
+  return findGridCodeZeroHelper(
+    domainToPlaneByModule2, latticeBasisByModule2, inverseLatticeBasisByModule,
+    dimsCopy.size(), x0Copy.data(), dimsCopy.data(), readoutResolution,
+    pointWithGridCodeZero->data(), shouldContinue);
 }
 
 pair<double,vector<double>>
