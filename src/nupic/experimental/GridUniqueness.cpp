@@ -331,44 +331,37 @@ bool tryFindGridCodeZero(
   const double r = readoutResolution/2 + 0.000000001;
   const double rSquared = pow(r, 2);
 
-  HyperrectangleVertexEnumerator vertices(x0, dims, numDims);
-  while (vertices.getNext(vertexBuffer))
+  for (size_t iDim = 0; iDim < numDims; iDim++)
   {
-    bool vertexDisqualified = false;
+    vertexBuffer[iDim] = x0[iDim] + (dims[iDim]/2);
+  }
 
-    for (size_t iModule = 0; iModule < domainToPlaneByModule.size(); iModule++)
+  for (size_t iModule = 0; iModule < domainToPlaneByModule.size(); iModule++)
+  {
+    const pair<double, double> pointOnPlane =
+      transformND(domainToPlaneByModule[iModule], vertexBuffer);
+
+    LatticePointEnumerator latticePoints(latticeBasisByModule[iModule],
+                                         inverseLatticeBasisByModule[iModule],
+                                         pointOnPlane.first,
+                                         pointOnPlane.second, 0, 0, r);
+
+    bool isZero = false;
+
+    pair<double, double> latticePoint;
+    while (!isZero && latticePoints.getNext(&latticePoint))
     {
-      const pair<double, double> pointOnPlane =
-        transformND(domainToPlaneByModule[iModule], vertexBuffer);
-
-      LatticePointEnumerator latticePoints(latticeBasisByModule[iModule],
-                                           inverseLatticeBasisByModule[iModule],
-                                           pointOnPlane.first,
-                                           pointOnPlane.second, 0, 0, r);
-
-      bool isZero = false;
-
-      pair<double, double> latticePoint;
-      while (!isZero && latticePoints.getNext(&latticePoint))
-      {
-        isZero = (pow(latticePoint.first - pointOnPlane.first, 2) +
-                  pow(latticePoint.second - pointOnPlane.second, 2) <= rSquared);
-      }
-
-      if (!isZero)
-      {
-        vertexDisqualified = true;
-        break;
-      }
+      isZero = (pow(latticePoint.first - pointOnPlane.first, 2) +
+                pow(latticePoint.second - pointOnPlane.second, 2) <= rSquared);
     }
 
-    if (!vertexDisqualified)
+    if (!isZero)
     {
-      return true;
+      return false;
     }
   }
 
-  return false;
+  return true;
 }
 
 /**
