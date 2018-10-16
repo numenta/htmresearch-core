@@ -843,7 +843,7 @@ nupic::experimental::grid_uniqueness::computeGridUniquenessHypercube(
     numDims,
 
     ignoredCenterDiameter,
-    ignoredCenterDiameter * 2,
+    ignoredCenterDiameter * 1.01,
     vector<double>(numDims, ignoredCenterDiameter),
     0,
     true,
