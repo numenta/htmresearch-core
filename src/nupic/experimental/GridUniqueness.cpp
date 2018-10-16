@@ -750,12 +750,12 @@ void optimizeMatrices(vector<vector<vector<double>>> *domainToPlaneByModule,
     vector<vector<double>> &latticeBasis = (*latticeBasisByModule)[iModule];
 
     size_t iLongest = (size_t) -1;
-    double dLongest = std::numeric_limits<double>::max();
+    double dLongest = std::numeric_limits<double>::lowest();
     for (size_t iColumn = 0; iColumn < domainToPlane[0].size(); iColumn++)
     {
       double length = sqrt(pow(domainToPlane[0][iColumn], 2) +
                            pow(domainToPlane[1][iColumn], 2));
-      if (length < dLongest)
+      if (length > dLongest)
       {
         dLongest = length;
         iLongest = iColumn;
