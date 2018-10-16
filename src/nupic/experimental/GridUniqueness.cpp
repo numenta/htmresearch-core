@@ -309,6 +309,73 @@ private:
 };
 
 /**
+ * Enumerate the edges of a hyperrectangle by incrementing two integers.
+ * One tracks the dimension that the edge extends along, and the other is a bit
+ * vector that represents all the other coordinates that remain constant along
+ * the edge.
+ */
+class HyperrectangleEdgeEnumerator
+{
+public:
+  HyperrectangleEdgeEnumerator(const double x0[],
+                               const double dims[],
+                               size_t numDims)
+    :x0_(x0), dims_(dims), numDims_(numDims), upper_(pow(2, numDims_ - 1)),
+     edgeDimension_(0), otherCoordinates_(0x0)
+  {
+  }
+
+  bool getNext(double *outVertex, size_t *outDimension)
+  {
+    if (edgeDimension_ >= numDims_)
+    {
+      return false;
+    }
+
+    for (size_t subspaceBit = 0; subspaceBit < numDims_ - 1; subspaceBit++)
+    {
+      const size_t bit = (subspaceBit < edgeDimension_)
+        ? subspaceBit
+        : subspaceBit + 1;
+
+      if (otherCoordinates_ & (0x1 << subspaceBit))
+      {
+        outVertex[bit] = x0_[bit] + dims_[bit];
+      }
+      else
+      {
+        outVertex[bit] = x0_[bit];
+      }
+    }
+
+    outVertex[edgeDimension_] = x0_[edgeDimension_];
+    *outDimension = edgeDimension_;
+
+    if (++otherCoordinates_ >= upper_)
+    {
+      edgeDimension_++;
+      otherCoordinates_ = 0x0;
+    }
+
+    return true;
+  }
+
+  void restart()
+  {
+    edgeDimension_ = 0;
+    otherCoordinates_ = 0x0;
+  }
+
+private:
+  const double *x0_;
+  const double *dims_;
+  const size_t numDims_;
+  const double upper_;
+  size_t edgeDimension_;
+  unsigned int otherCoordinates_; // bit vector
+};
+
+/**
  * Quickly check a few points in this hyperrectangle to see if they have grid
  * code zero.
  */
@@ -364,6 +431,132 @@ bool tryFindGridCodeZero(
   return true;
 }
 
+bool latticePointOverlapsShadow(pair<double, double> latticePoint,
+                                size_t numDims,
+                                const double x0[],
+                                const double dims[],
+                                double readoutResolution,
+                                const vector<vector<double>>& domainToPlane,
+                                double vertexBuffer[])
+{
+  const double r = readoutResolution/2;
+  const double rSquared = pow(r, 2);
+
+  bool foundLatticeCollision = false;
+
+  // If the circle around a lattice point overlaps the 2D shadow of this box,
+  // then at least one of the following is true:
+  //   A. It intersects one of the edges.
+  //   B. It is totally contained within the shadow. (not possible in 1D)
+  //
+  // We don't check which edges of the box form the outside of the shadow, so
+  // it's possible for both A and B to be true.
+  //
+  // To detect possibility A, we check the distance between the lattice point
+  // and each edge. If it's within the radius of the circle, then the two
+  // intersect.
+  //
+  // To detect possibility B, we extend two rays leftward and rightward from the
+  // lattice point. If both rays intersect an edge, then the lattice point is
+  // contained within the shadow.
+
+  bool leftRayCollided = false;
+  bool rightRayCollided = false;
+
+  size_t edgeDimension;
+  HyperrectangleEdgeEnumerator edges(x0, dims, numDims);
+  while (edges.getNext(vertexBuffer, &edgeDimension))
+  {
+    const pair<double,double> p1 = transformND(domainToPlane,
+                                               vertexBuffer);
+    vertexBuffer[edgeDimension] += dims[edgeDimension];
+    const pair<double,double> p2 = transformND(domainToPlane,
+                                               vertexBuffer);
+
+    pair<double,double> unitVector = {p2.first - p1.first,
+                                      p2.second - p1.second};
+    const double edgeLength = sqrt(pow(unitVector.first, 2) +
+                                   pow(unitVector.second, 2));
+    unitVector.first /= edgeLength;
+    unitVector.second /= edgeLength;
+
+    const double latticePointDistanceAlongEdge =
+      (unitVector.first*(latticePoint.first - p1.first) +
+       unitVector.second*(latticePoint.second - p1.second));
+
+    pair<double,double> nearestPointOnEdge;
+    if (latticePointDistanceAlongEdge <= 0)
+    {
+      nearestPointOnEdge = p1;
+    }
+    else if (latticePointDistanceAlongEdge < edgeLength)
+    {
+      nearestPointOnEdge = {
+        p1.first + unitVector.first * latticePointDistanceAlongEdge,
+        p1.second + unitVector.second * latticePointDistanceAlongEdge,
+      };
+    }
+    else
+    {
+      nearestPointOnEdge = p2;
+    }
+
+    if (pow(latticePoint.first - nearestPointOnEdge.first, 2) +
+        pow(latticePoint.second - nearestPointOnEdge.second, 2) <= rSquared)
+    {
+      foundLatticeCollision = true;
+      break;
+    }
+
+    if (numDims > 1)
+    {
+      if (p1.second == p2.second)
+      {
+        // Special logic to avoid dividing by zero.
+        if (p1.second == latticePoint.second)
+        {
+          // The ray passes straight through the edge.
+          if (p1.first < latticePoint.first)
+          {
+            leftRayCollided = true;
+          }
+          else
+          {
+            rightRayCollided = true;
+          }
+        }
+      }
+      else if ((p1.second < latticePoint.second &&
+                latticePoint.second < p2.second) ||
+               (p2.second < latticePoint.second &&
+                latticePoint.second < p1.second))
+      {
+        // Determine the point where it crosses.
+        const double xCross = p1.first +
+          (p2.first - p1.first) * ((latticePoint.second - p1.second) /
+                                   (p2.second - p1.second));
+
+        if (xCross < latticePoint.first)
+        {
+          leftRayCollided = true;
+        }
+        else
+        {
+          rightRayCollided = true;
+        }
+      }
+
+      if (leftRayCollided && rightRayCollided)
+      {
+        foundLatticeCollision = true;
+        break;
+      }
+    }
+  }
+
+  return foundLatticeCollision;
+}
+
 /**
  * Quickly check whether this hyperrectangle excludes grid code zero
  * in any individual module.
@@ -407,14 +600,38 @@ bool tryProveGridCodeZeroImpossible(
     bool foundLatticeCollision = false;
     while (!foundLatticeCollision && latticePoints.getNext(&latticePoint))
     {
-      // At this point, there might not actually be a lattice collision. The
-      // bounding box collides with a lattice point, but it might not collide
-      // with the actual polygon. However, we can just lazily assume that it
-      // collided. If it didn't actually, this function will get called again
-      // with a smaller box, and eventually the space will be broken into
-      // sufficiently small boxes that each of them have no overlap with the
-      // lattice of at least one module.
-      foundLatticeCollision = true;
+      // At this point, the bounding box collides with a lattice point, but it
+      // might not collide with the actual polygon formed by the 2D shadow of
+      // the box. We don't actually need to check whether it collides with the
+      // polygon; we can just say that it might. If it doesn't, this function
+      // will get called again with a smaller box, and eventually the space will
+      // be broken into sufficiently small boxes that each have no overlap with
+      // the lattice of at least one module.
+      //
+      // With high dimensional boxes, this approach can be slow. It checks a
+      // large number of tiny polygons that are just outside the range of a
+      // lattice point. It has to divide each of these tiny polygons until the
+      // bounding box doesn't touch the lattice point. With a thorough approach,
+      // it has to perform much fewer checks, but each check is slower.
+      //
+      // To get the best of both worlds, we do non-thorough checks when the
+      // shadow is large, and begin doing thorough checks when the shadow is
+      // small.
+      if (xmax - xmin > 0.5 ||
+          ymax - ymin > 0.5)
+      {
+        // Rely on the bounding box check.
+        foundLatticeCollision = true;
+      }
+      else
+      {
+        // Do a thorough check.
+        foundLatticeCollision =
+          latticePointOverlapsShadow(latticePoint, numDims, x0, dims,
+                                     readoutResolution,
+                                     domainToPlaneByModule[iModule],
+                                     vertexBuffer);
+      }
     }
 
     if (!foundLatticeCollision)
