@@ -242,8 +242,10 @@ private:
 
   double dSquaredPrev_;
   double innerSweepMin_;
-  long long jForInnerSweepMin_;
-  long long jForInnerSweepMin_i0_;
+  // Initialize these because some compilers aren't convinced that these are
+  // guaranteed to be initialized before read.
+  long long jForInnerSweepMin_ = std::numeric_limits<long long>::lowest();
+  long long jForInnerSweepMin_i0_ = std::numeric_limits<long long>::lowest();
   double dSquared_j0_;
 
   bool finished_;
