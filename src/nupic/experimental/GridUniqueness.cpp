@@ -1140,7 +1140,7 @@ nupic::experimental::grid_uniqueness::computeGridUniquenessHypercube(
           }
         }
       }
-      else if (quitting && !processingQuit)
+      else if (quitting && !processingQuit && state.numActiveThreads > 0)
       {
         // The condition_variable returned due to an interrupt. We still need to
         // wait for threads to exit.
