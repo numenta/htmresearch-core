@@ -882,11 +882,25 @@ void findGridCodeZeroThread(size_t iThread, GridUniquenessState& state)
     }
 
     // Perform the task.
-    foundGridCodeZero = findGridCodeZeroHelper(
-      state.domainToPlaneByModule, state.latticeBasisByModule,
-      state.inverseLatticeBasisByModule, state.numDims, x0.data(), dims.data(),
-      state.readoutResolution, pointWithGridCodeZero.data(),
-      state.threadShouldContinue[iThread]);
+
+    // Optimization mainly intended for 1D: if the box is large, break it into
+    // small chunks rather than relying completely on the divide-and-conquer to
+    // break into reasonable-sized chunks.
+    const double x0_0_orig = x0[0];
+    const double dims_0_orig = dims[0];
+    const double maxChunkLength = 20.0;
+    for (double offset0 = 0; !foundGridCodeZero && offset0 < dims_0_orig;
+         offset0 += maxChunkLength)
+    {
+      x0[0] = x0_0_orig + offset0;
+      dims[0] = std::min(dims_0_orig - offset0, maxChunkLength);
+
+      foundGridCodeZero = findGridCodeZeroHelper(
+        state.domainToPlaneByModule, state.latticeBasisByModule,
+        state.inverseLatticeBasisByModule, state.numDims, x0.data(), dims.data(),
+        state.readoutResolution, pointWithGridCodeZero.data(),
+        state.threadShouldContinue[iThread]);
+    }
   }
 
   // This thread is exiting.
