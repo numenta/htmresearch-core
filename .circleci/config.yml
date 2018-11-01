@@ -1,6 +1,14 @@
 version: 2
 jobs:
-  build-and-test:
+  validate-contributor:
+    machine: true
+    steps:
+      - checkout
+      - run:
+          name: Validate contributor license
+          command: ci/validate-contributor.sh
+
+  build-and-test-osx:
     macos:
       xcode: '9.0.1'
     working_directory: ~/numenta/htmresearch-core
@@ -114,10 +122,13 @@ workflows:
   version: 2
   build-test-deploy:
     jobs:
-      - build-and-test
+      - validate-contributor
+      - build-and-test-osx:
+          requires:
+            - validate-contributor
       - deploy-s3:
           requires: 
-            - build-and-test
+            - build-and-test-osx
           filters:
             branches:
               only: master
