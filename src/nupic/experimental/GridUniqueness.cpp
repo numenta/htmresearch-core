@@ -314,6 +314,20 @@ private:
 };
 
 /**
+ * Compute d % 1.0, returning a value within the range [-0.5, 0.5]
+ */
+double mod1_05(double d)
+{
+  double ret = d - floor(d);
+  if (ret > 0.5)
+  {
+    ret -= 1.0;
+  }
+
+  return ret;
+}
+
+/**
  * Quickly check a few points in this hyperrectangle to see if they have grid
  * code zero.
  */
@@ -346,21 +360,19 @@ bool tryFindGridCodeZero(
     const pair<double, double> pointOnPlane =
       transformND(domainToPlaneByModule[iModule], vertexBuffer);
 
-    LatticePointEnumerator latticePoints(latticeBasisByModule[iModule],
-                                         inverseLatticeBasisByModule[iModule],
-                                         pointOnPlane.first,
-                                         pointOnPlane.second, 0, 0, r);
+    const pair<double, double> pointOnUnrolledTorus =
+      transform2D(inverseLatticeBasisByModule[iModule], pointOnPlane);
 
-    bool isZero = false;
+    const pair<double, double> pointOnTorus = {
+      mod1_05(pointOnUnrolledTorus.first),
+      mod1_05(pointOnUnrolledTorus.second)
+    };
 
-    pair<double, double> latticePoint;
-    while (!isZero && latticePoints.getNext(&latticePoint))
-    {
-      isZero = (pow(latticePoint.first - pointOnPlane.first, 2) +
-                pow(latticePoint.second - pointOnPlane.second, 2) <= rSquared);
-    }
+    const pair<double, double> pointOnPlaneNearestZero =
+      transform2D(latticeBasisByModule[iModule], pointOnTorus);
 
-    if (!isZero)
+    if (pow(pointOnPlaneNearestZero.first, 2) +
+        pow(pointOnPlaneNearestZero.second, 2) > rSquared)
     {
       return false;
     }
