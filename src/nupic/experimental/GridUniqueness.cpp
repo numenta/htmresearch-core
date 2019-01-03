@@ -41,10 +41,19 @@
 #include <thread>
 #include <vector>
 
+#include <boost/geometry.hpp>
+#include <boost/geometry/geometries/polygon.hpp>
+#include <boost/geometry/geometries/adapted/boost_tuple.hpp>
+#include <boost/geometry/geometries/register/point.hpp>
+
 using std::vector;
 using std::pair;
+namespace bg = boost::geometry;
 
-static std::atomic<bool> quitting(false);
+BOOST_GEOMETRY_REGISTER_BOOST_TUPLE_CS(cs::cartesian)
+
+static std::atomic<bool> g_quitting(false);
+
 
 pair<double,double> transform2D(const vector<vector<double>>& M,
                                 pair<double,double> p)
@@ -268,11 +277,8 @@ private:
 class HyperrectangleVertexEnumerator
 {
 public:
-  HyperrectangleVertexEnumerator(const double x0[],
-                                 const double dims[],
-                                 size_t numDims)
-    :x0_(x0), dims_(dims), numDims_(numDims), upper_(pow(2, numDims)),
-     bitvector_(0x0)
+  HyperrectangleVertexEnumerator(const double dims[], size_t numDims)
+    :dims_(dims), numDims_(numDims), upper_(pow(2, numDims)), bitvector_(0x0)
   {
   }
 
@@ -285,11 +291,9 @@ public:
 
     for (size_t bit = 0; bit < numDims_; bit++)
     {
-      out[bit] = x0_[bit];
-      if (bitvector_ & (0x1 << bit))
-      {
-        out[bit] += dims_[bit];
-      }
+      out[bit] = (bitvector_ & (0x1 << bit))
+        ? dims_[bit]
+        : 0;
     }
 
     bitvector_++;
@@ -303,78 +307,10 @@ public:
   }
 
 private:
-  const double *x0_;
   const double *dims_;
   const size_t numDims_;
   const double upper_;
   unsigned int bitvector_;
-};
-
-/**
- * Enumerate the edges of a hyperrectangle by incrementing two integers.
- * One tracks the dimension that the edge extends along, and the other is a bit
- * vector that represents all the other coordinates that remain constant along
- * the edge.
- */
-class HyperrectangleEdgeEnumerator
-{
-public:
-  HyperrectangleEdgeEnumerator(const double x0[],
-                               const double dims[],
-                               size_t numDims)
-    :x0_(x0), dims_(dims), numDims_(numDims), upper_(pow(2, numDims_ - 1)),
-     edgeDimension_(0), otherCoordinates_(0x0)
-  {
-  }
-
-  bool getNext(double *outVertex, size_t *outDimension)
-  {
-    if (edgeDimension_ >= numDims_)
-    {
-      return false;
-    }
-
-    for (size_t subspaceBit = 0; subspaceBit < numDims_ - 1; subspaceBit++)
-    {
-      const size_t bit = (subspaceBit < edgeDimension_)
-        ? subspaceBit
-        : subspaceBit + 1;
-
-      if (otherCoordinates_ & (0x1 << subspaceBit))
-      {
-        outVertex[bit] = x0_[bit] + dims_[bit];
-      }
-      else
-      {
-        outVertex[bit] = x0_[bit];
-      }
-    }
-
-    outVertex[edgeDimension_] = x0_[edgeDimension_];
-    *outDimension = edgeDimension_;
-
-    if (++otherCoordinates_ >= upper_)
-    {
-      edgeDimension_++;
-      otherCoordinates_ = 0x0;
-    }
-
-    return true;
-  }
-
-  void restart()
-  {
-    edgeDimension_ = 0;
-    otherCoordinates_ = 0x0;
-  }
-
-private:
-  const double *x0_;
-  const double *dims_;
-  const size_t numDims_;
-  const double upper_;
-  size_t edgeDimension_;
-  unsigned int otherCoordinates_; // bit vector
 };
 
 /**
@@ -433,16 +369,51 @@ bool tryFindGridCodeZero(
   return true;
 }
 
-bool latticePointOverlapsShadow(pair<double, double> latticePoint,
-                                size_t numDims,
-                                const double x0[],
-                                const double dims[],
-                                double readoutResolution,
-                                const vector<vector<double>>& domainToPlane,
-                                double vertexBuffer[])
+bool lineSegmentIntersectsCircle(pair<double, double> start,
+                                 pair<double, double> end,
+                                 pair<double, double> center,
+                                 double r)
+{
+  pair<double,double> unitVector = {end.first - start.first,
+                                    end.second - start.second};
+  const double lineLength = sqrt(pow(unitVector.first, 2) +
+                                 pow(unitVector.second, 2));
+  unitVector.first /= lineLength;
+  unitVector.second /= lineLength;
+
+  const double centerDistanceAlongLine =
+    (unitVector.first*(center.first - start.first) +
+     unitVector.second*(center.second - start.second));
+
+  pair<double,double> nearestPointOnLine;
+  if (centerDistanceAlongLine <= 0)
+  {
+    nearestPointOnLine = start;
+  }
+  else if (centerDistanceAlongLine < lineLength)
+  {
+    nearestPointOnLine = {
+      start.first + unitVector.first * centerDistanceAlongLine,
+      start.second + unitVector.second * centerDistanceAlongLine,
+    };
+  }
+  else
+  {
+    nearestPointOnLine = end;
+  }
+
+  return (pow(center.first - nearestPointOnLine.first, 2) +
+          pow(center.second - nearestPointOnLine.second, 2) <= pow(r, 2));
+}
+
+bool latticePointOverlapsShadow(
+  pair<double, double> latticePoint,
+  const vector<pair<double, double>>& convexHullUnshifted,
+  pair<double, double> shift,
+  size_t numDims,
+  double readoutResolution)
 {
   const double r = readoutResolution/2;
-  const double rSquared = pow(r, 2);
 
   bool foundLatticeCollision = false;
 
@@ -465,80 +436,30 @@ bool latticePointOverlapsShadow(pair<double, double> latticePoint,
   bool leftRayCollided = false;
   bool rightRayCollided = false;
 
-  size_t edgeDimension;
-  HyperrectangleEdgeEnumerator edges(x0, dims, numDims);
-  while (edges.getNext(vertexBuffer, &edgeDimension))
+  for (size_t iPoint = 0; iPoint < convexHullUnshifted.size() - 1; iPoint++)
   {
-    const pair<double,double> p1 = transformND(domainToPlane,
-                                               vertexBuffer);
-    vertexBuffer[edgeDimension] += dims[edgeDimension];
-    const pair<double,double> p2 = transformND(domainToPlane,
-                                               vertexBuffer);
+    const pair<double,double> p1 = {
+      convexHullUnshifted[iPoint].first + shift.first,
+      convexHullUnshifted[iPoint].second + shift.second,
+    };
+    const pair<double,double> p2 = {
+      convexHullUnshifted[iPoint+1].first + shift.first,
+      convexHullUnshifted[iPoint+1].second + shift.second,
+    };
 
-    pair<double,double> unitVector = {p2.first - p1.first,
-                                      p2.second - p1.second};
-    const double edgeLength = sqrt(pow(unitVector.first, 2) +
-                                   pow(unitVector.second, 2));
-    unitVector.first /= edgeLength;
-    unitVector.second /= edgeLength;
-
-    const double latticePointDistanceAlongEdge =
-      (unitVector.first*(latticePoint.first - p1.first) +
-       unitVector.second*(latticePoint.second - p1.second));
-
-    pair<double,double> nearestPointOnEdge;
-    if (latticePointDistanceAlongEdge <= 0)
-    {
-      nearestPointOnEdge = p1;
-    }
-    else if (latticePointDistanceAlongEdge < edgeLength)
-    {
-      nearestPointOnEdge = {
-        p1.first + unitVector.first * latticePointDistanceAlongEdge,
-        p1.second + unitVector.second * latticePointDistanceAlongEdge,
-      };
-    }
-    else
-    {
-      nearestPointOnEdge = p2;
-    }
-
-    if (pow(latticePoint.first - nearestPointOnEdge.first, 2) +
-        pow(latticePoint.second - nearestPointOnEdge.second, 2) <= rSquared)
+    if (lineSegmentIntersectsCircle(p1, p2, latticePoint, r))
     {
       foundLatticeCollision = true;
       break;
     }
 
-    if (numDims > 1)
+    if (p1.second == p2.second)
     {
-      if (p1.second == p2.second)
+      // Special logic to avoid dividing by zero.
+      if (p1.second == latticePoint.second)
       {
-        // Special logic to avoid dividing by zero.
-        if (p1.second == latticePoint.second)
-        {
-          // The ray passes straight through the edge.
-          if (p1.first < latticePoint.first)
-          {
-            leftRayCollided = true;
-          }
-          else
-          {
-            rightRayCollided = true;
-          }
-        }
-      }
-      else if ((p1.second < latticePoint.second &&
-                latticePoint.second < p2.second) ||
-               (p2.second < latticePoint.second &&
-                latticePoint.second < p1.second))
-      {
-        // Determine the point where it crosses.
-        const double xCross = p1.first +
-          (p2.first - p1.first) * ((latticePoint.second - p1.second) /
-                                   (p2.second - p1.second));
-
-        if (xCross < latticePoint.first)
+        // The ray passes straight through the edge.
+        if (p1.first < latticePoint.first)
         {
           leftRayCollided = true;
         }
@@ -547,16 +468,147 @@ bool latticePointOverlapsShadow(pair<double, double> latticePoint,
           rightRayCollided = true;
         }
       }
+    }
+    else if ((p1.second < latticePoint.second &&
+              latticePoint.second < p2.second) ||
+             (p2.second < latticePoint.second &&
+              latticePoint.second < p1.second))
+    {
+      // Determine the point where it crosses.
+      const double xCross = p1.first +
+        (p2.first - p1.first) * ((latticePoint.second - p1.second) /
+                                 (p2.second - p1.second));
 
-      if (leftRayCollided && rightRayCollided)
+      if (xCross < latticePoint.first)
       {
-        foundLatticeCollision = true;
-        break;
+        leftRayCollided = true;
       }
+      else
+      {
+        rightRayCollided = true;
+      }
+    }
+
+    if (leftRayCollided && rightRayCollided)
+    {
+      foundLatticeCollision = true;
+      break;
     }
   }
 
   return foundLatticeCollision;
+}
+
+vector<pair<double,double>> getShadowConvexHull(
+  const vector<vector<double>>& domainToPlane,
+  size_t numDims,
+  const double dims[],
+  double vertexBuffer[])
+{
+  if (numDims == 2)
+  {
+    // Optimization: in 2D we already know the convex hull.
+    const double point1[2] = {0, 0};
+    const double point2[2] = {0, dims[1]};
+    const double point3[2] = {dims[0], dims[1]};
+    const double point4[2] = {dims[0], 0};
+
+    const pair<double,double> p1 =  transformND(domainToPlane, point1);
+
+    return {p1,
+            transformND(domainToPlane, point2),
+            transformND(domainToPlane, point3),
+            transformND(domainToPlane, point4),
+            p1};
+  }
+
+  typedef boost::tuple<float, float> point;
+  typedef bg::model::polygon<point> polygon;
+
+  polygon poly;
+
+  HyperrectangleVertexEnumerator vertices(dims, numDims);
+  while (vertices.getNext(vertexBuffer))
+  {
+    const pair<double,double> p = transformND(domainToPlane, vertexBuffer);
+    bg::append(poly, point(p.first, p.second));
+  }
+
+  polygon hull;
+  bg::convex_hull(poly, hull);
+
+  vector<pair<double, double>> convexHull;
+  convexHull.reserve(hull.outer().size());
+
+  for (auto it = hull.outer().begin(); it != hull.outer().end(); ++it)
+  {
+    convexHull.push_back({bg::get<0>(*it),
+                          bg::get<1>(*it)});
+  }
+
+  return convexHull;
+}
+
+struct BoundingBox2D {
+  double xmin;
+  double xmax;
+  double ymin;
+  double ymax;
+};
+
+/**
+ * Quickly check whether this hyperrectangle excludes grid code zero
+ * in any individual module.
+ */
+bool tryProveGridCodeZeroImpossible_1D(
+  const vector<vector<vector<double>>>& domainToPlaneByModule,
+  const vector<vector<vector<double>>>& latticeBasisByModule,
+  const vector<vector<vector<double>>>& inverseLatticeBasisByModule,
+  size_t numDims,
+  const double x0[],
+  const double dims[],
+  double readoutResolution,
+  double vertexBuffer[])
+{
+  const double r = readoutResolution/2;
+
+  const double point1 = x0[0];
+  const double point2 = x0[0] + dims[0];
+
+  for (size_t iModule = 0; iModule < domainToPlaneByModule.size(); iModule++)
+  {
+    const pair<double,double> p1 = transformND(domainToPlaneByModule[iModule],
+                                               &point1);
+    const pair<double,double> p2 = transformND(domainToPlaneByModule[iModule],
+                                               &point2);
+
+    // Figure out which lattice points we need to check.
+    const double xmin = std::min(p1.first, p2.first);
+    const double xmax = std::max(p1.first, p2.first);
+    const double ymin = std::min(p1.second, p2.second);
+    const double ymax = std::max(p1.second, p2.second);
+    LatticePointEnumerator latticePoints(latticeBasisByModule[iModule],
+                                         inverseLatticeBasisByModule[iModule],
+                                         xmin, ymin, (xmax - xmin), (ymax - ymin),
+                                         r);
+
+    pair<double, double> latticePoint;
+    bool foundLatticeCollision = false;
+    while (!foundLatticeCollision && latticePoints.getNext(&latticePoint))
+    {
+      foundLatticeCollision =
+        lineSegmentIntersectsCircle(p1, p2, latticePoint, r);
+    }
+
+    if (!foundLatticeCollision)
+    {
+      // This module never gets near grid code zero for the provided range of
+      // locations. So this range can't possibly contain grid code zero.
+      return true;
+    }
+  }
+
+  return false;
 }
 
 /**
@@ -571,28 +623,69 @@ bool tryProveGridCodeZeroImpossible(
   const double x0[],
   const double dims[],
   double readoutResolution,
-  double vertexBuffer[])
+  double vertexBuffer[],
+  vector<vector<vector<pair<double,double>>>>& cachedShadows,
+  vector<vector<BoundingBox2D>>& cachedShadowBoundingBoxes,
+  size_t frameNumber)
 {
+  if (numDims == 1)
+  {
+    return tryProveGridCodeZeroImpossible_1D(
+      domainToPlaneByModule, latticeBasisByModule, inverseLatticeBasisByModule,
+      numDims, x0, dims, readoutResolution, vertexBuffer);
+  }
+
   const double r = readoutResolution/2;
 
-  HyperrectangleVertexEnumerator vertices(x0, dims, numDims);
+  NTA_ASSERT(frameNumber <= cachedShadowBoundingBoxes.size());
+
+  if (frameNumber == cachedShadowBoundingBoxes.size())
+  {
+    vector<vector<pair<double,double>>> shadowByModule;
+    shadowByModule.reserve(domainToPlaneByModule.size());
+
+    vector<BoundingBox2D> boundingBoxByModule;
+    boundingBoxByModule.reserve(domainToPlaneByModule.size());
+
+    for (size_t iModule = 0; iModule < domainToPlaneByModule.size(); iModule++)
+    {
+      const vector<pair<double, double>> shadow =
+        getShadowConvexHull(domainToPlaneByModule[iModule], numDims, dims,
+                            vertexBuffer);
+      shadowByModule.push_back(shadow);
+
+      BoundingBox2D boundingBox = {
+        std::numeric_limits<double>::max(),
+        std::numeric_limits<double>::lowest(),
+        std::numeric_limits<double>::max(),
+        std::numeric_limits<double>::lowest(),
+      };
+      for (pair<double,double> p : shadow)
+      {
+        boundingBox.xmin = std::min(boundingBox.xmin, p.first);
+        boundingBox.xmax = std::max(boundingBox.xmax, p.first);
+        boundingBox.ymin = std::min(boundingBox.ymin, p.second);
+        boundingBox.ymax = std::max(boundingBox.ymax, p.second);
+      }
+      boundingBoxByModule.push_back(boundingBox);
+    }
+
+    cachedShadows.push_back(shadowByModule);
+    cachedShadowBoundingBoxes.push_back(boundingBoxByModule);
+  }
+
   for (size_t iModule = 0; iModule < domainToPlaneByModule.size(); iModule++)
   {
     // Figure out which lattice points we need to check.
-    double xmin = std::numeric_limits<double>::max();
-    double xmax = std::numeric_limits<double>::lowest();
-    double ymin = std::numeric_limits<double>::max();
-    double ymax = std::numeric_limits<double>::lowest();
-    vertices.restart();
-    while (vertices.getNext(vertexBuffer))
-    {
-      const pair<double,double> p = transformND(domainToPlaneByModule[iModule],
-                                                vertexBuffer);
-      xmin = std::min(xmin, p.first);
-      xmax = std::max(xmax, p.first);
-      ymin = std::min(ymin, p.second);
-      ymax = std::max(ymax, p.second);
-    }
+    const pair<double,double> shift =
+      transformND( domainToPlaneByModule[iModule], x0);
+    const BoundingBox2D& boundingBox =
+      cachedShadowBoundingBoxes[frameNumber][iModule];
+    const double xmin = boundingBox.xmin + shift.first;
+    const double xmax = boundingBox.xmax + shift.first;
+    const double ymin = boundingBox.ymin + shift.second;
+    const double ymax = boundingBox.ymax + shift.second;
+
     LatticePointEnumerator latticePoints(latticeBasisByModule[iModule],
                                          inverseLatticeBasisByModule[iModule],
                                          xmin, ymin, (xmax - xmin), (ymax - ymin),
@@ -627,12 +720,10 @@ bool tryProveGridCodeZeroImpossible(
       }
       else
       {
-        // Do a thorough check.
         foundLatticeCollision =
-          latticePointOverlapsShadow(latticePoint, numDims, x0, dims,
-                                     readoutResolution,
-                                     domainToPlaneByModule[iModule],
-                                     vertexBuffer);
+          latticePointOverlapsShadow(latticePoint,
+                                     cachedShadows[frameNumber][iModule],
+                                     shift, numDims, readoutResolution);
       }
     }
 
@@ -682,6 +773,9 @@ bool findGridCodeZeroHelper(
   double dims[],
   double readoutResolution,
   double vertexBuffer[],
+  vector<vector<vector<pair<double,double>>>>& cachedShadows,
+  vector<vector<BoundingBox2D>>& cachedShadowBoundingBoxes,
+  size_t frameNumber,
   std::atomic<bool>& shouldContinue)
 {
   if (!shouldContinue)
@@ -699,7 +793,9 @@ bool findGridCodeZeroHelper(
   if (tryProveGridCodeZeroImpossible(domainToPlaneByModule,
                                      latticeBasisByModule,
                                      inverseLatticeBasisByModule, numDims, x0,
-                                     dims, readoutResolution, vertexBuffer))
+                                     dims, readoutResolution, vertexBuffer,
+                                     cachedShadows, cachedShadowBoundingBoxes,
+                                     frameNumber))
   {
     return false;
   }
@@ -708,20 +804,22 @@ bool findGridCodeZeroHelper(
                                     std::max_element(dims, dims + numDims));
   {
     SwapValueRAII swap1(&dims[iWidestDim], dims[iWidestDim] / 2);
-
-    if (findGridCodeZeroHelper(domainToPlaneByModule, latticeBasisByModule,
-                               inverseLatticeBasisByModule, numDims, x0, dims,
-                               readoutResolution, vertexBuffer, shouldContinue))
+    if (findGridCodeZeroHelper(
+          domainToPlaneByModule, latticeBasisByModule,
+          inverseLatticeBasisByModule, numDims, x0, dims, readoutResolution,
+          vertexBuffer, cachedShadows, cachedShadowBoundingBoxes,
+          frameNumber + 1, shouldContinue))
     {
       return true;
     }
 
     {
       SwapValueRAII swap2(&x0[iWidestDim], x0[iWidestDim] + dims[iWidestDim]);
-      return findGridCodeZeroHelper(domainToPlaneByModule, latticeBasisByModule,
-                                    inverseLatticeBasisByModule, numDims, x0,
-                                    dims, readoutResolution, vertexBuffer,
-                                    shouldContinue);
+      return findGridCodeZeroHelper(
+        domainToPlaneByModule, latticeBasisByModule,
+        inverseLatticeBasisByModule, numDims, x0, dims, readoutResolution,
+        vertexBuffer, cachedShadows, cachedShadowBoundingBoxes, frameNumber + 1,
+        shouldContinue);
     }
   }
 }
@@ -757,7 +855,8 @@ struct GridUniquenessState {
   vector<bool> threadRunning;
 };
 
-std::string vecs(const vector<double>& v)
+template<typename T>
+std::string vecs(const vector<T>& v)
 {
   std::ostringstream oss;
   oss << "[";
@@ -856,7 +955,7 @@ void findGridCodeZeroThread(size_t iThread, GridUniquenessState& state)
   vector<double> dims(state.numDims);
   vector<double> pointWithGridCodeZero(state.numDims);
 
-  while (!quitting)
+  while (!g_quitting)
   {
     // Modify the shared state. Record the results, decide the next task,
     // volunteer to do it.
@@ -895,10 +994,14 @@ void findGridCodeZeroThread(size_t iThread, GridUniquenessState& state)
       x0[0] = x0_0_orig + offset0;
       dims[0] = std::min(dims_0_orig - offset0, maxChunkLength);
 
+      vector<vector<vector<pair<double,double>>>> cachedShadows;
+      vector<vector<BoundingBox2D>> cachedShadowBoundingBoxes;
+
       foundGridCodeZero = findGridCodeZeroHelper(
         state.domainToPlaneByModule, state.latticeBasisByModule,
-        state.inverseLatticeBasisByModule, state.numDims, x0.data(), dims.data(),
-        state.readoutResolution, pointWithGridCodeZero.data(),
+        state.inverseLatticeBasisByModule, state.numDims, x0.data(),
+        dims.data(), state.readoutResolution, pointWithGridCodeZero.data(),
+        cachedShadows, cachedShadowBoundingBoxes, 0,
         state.threadShouldContinue[iThread]);
     }
   }
@@ -1006,10 +1109,14 @@ bool nupic::experimental::grid_uniqueness::findGridCodeZero(
     inverseLatticeBasisByModule.push_back(invert2DMatrix(latticeBasis));
   }
 
+  vector<vector<vector<pair<double,double>>>> cachedShadows;
+  vector<vector<BoundingBox2D>> cachedShadowBoundingBoxes;
+
   return findGridCodeZeroHelper(
     domainToPlaneByModule2, latticeBasisByModule2, inverseLatticeBasisByModule,
     dimsCopy.size(), x0Copy.data(), dimsCopy.data(), readoutResolution,
-    pointWithGridCodeZero->data(), shouldContinue);
+    pointWithGridCodeZero->data(),
+    cachedShadows, cachedShadowBoundingBoxes, 0, shouldContinue);
 }
 
 pair<double,vector<double>>
@@ -1025,7 +1132,7 @@ nupic::experimental::grid_uniqueness::computeGridUniquenessHypercube(
   // Jupyter notebook, and to make the threads return cleanly.
   struct sigaction sigIntHandler;
   sigIntHandler.sa_handler =
-    [](int s) { quitting = true; };
+    [](int s) { g_quitting = true; };
   sigemptyset(&sigIntHandler.sa_mask);
   sigIntHandler.sa_flags = 0;
   sigaction(SIGINT, &sigIntHandler, NULL);
@@ -1154,7 +1261,7 @@ nupic::experimental::grid_uniqueness::computeGridUniquenessHypercube(
           }
         }
       }
-      else if (quitting && !processingQuit && state.numActiveThreads > 0)
+      else if (g_quitting && !processingQuit && state.numActiveThreads > 0)
       {
         // The condition_variable returned due to an interrupt. We still need to
         // wait for threads to exit.
@@ -1172,11 +1279,11 @@ nupic::experimental::grid_uniqueness::computeGridUniquenessHypercube(
     }
   }
 
-  if (quitting)
+  if (g_quitting)
   {
     // The process might not be ending, the caller (e.g. the Python shell) is
     // likely to catch this exception and continue, so prepare to run again.
-    quitting = false;
+    g_quitting = false;
     NTA_THROW << "Caught interrupt signal";
   }
 
