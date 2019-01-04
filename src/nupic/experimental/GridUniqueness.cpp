@@ -430,12 +430,9 @@ bool latticePointOverlapsShadow(
   bool foundLatticeCollision = false;
 
   // If the circle around a lattice point overlaps the 2D shadow of this box,
-  // then at least one of the following is true:
+  // then one of the following is true:
   //   A. It intersects one of the edges.
   //   B. It is totally contained within the shadow. (not possible in 1D)
-  //
-  // We don't check which edges of the box form the outside of the shadow, so
-  // it's possible for both A and B to be true.
   //
   // To detect possibility A, we check the distance between the lattice point
   // and each edge. If it's within the radius of the circle, then the two
