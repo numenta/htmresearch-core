@@ -97,9 +97,10 @@ class LatticePointEnumerator
 public:
   LatticePointEnumerator(const vector<vector<double>>& latticeBasis,
                          const vector<vector<double>>& inverseLatticeBasis,
-                         double x0, double y0, double width, double height, double r)
+                         double x0, double y0, double width, double height,
+                         double r, double rSquared)
     :latticeBasis_(latticeBasis), x0_(x0), y0_(y0), width_(width),
-     height_(height), rSquared_(pow(r, 2))
+     height_(height), rSquared_(rSquared)
   {
     // Find the bounding box of the rectangle in the lattice's basis.
     double xmin = std::numeric_limits<double>::max();
@@ -338,18 +339,9 @@ bool tryFindGridCodeZero(
   size_t numDims,
   const double x0[],
   const double dims[],
-  double readoutResolution,
+  double rSquared,
   double vertexBuffer[])
 {
-  // Add a small epsilon to handle situations where floating point math causes a
-  // vertex to be non-zero-overlapping here and zero-overlapping in
-  // tryProveGridCodeZeroImpossible. With this addition, anything
-  // zero-overlapping in tryProveGridCodeZeroImpossible is guaranteed to be
-  // zero-overlapping here, so the program won't get caught in infinite
-  // recursion.
-  const double r = readoutResolution/2 + 0.000000001;
-  const double rSquared = pow(r, 2);
-
   for (size_t iDim = 0; iDim < numDims; iDim++)
   {
     vertexBuffer[iDim] = x0[iDim] + (dims[iDim]/2);
@@ -381,18 +373,13 @@ bool tryFindGridCodeZero(
   return true;
 }
 
-bool lineSegmentIntersectsCircle(pair<double, double> start,
-                                 pair<double, double> end,
-                                 pair<double, double> center,
-                                 double r)
+bool lineSegmentIntersectsCircle2(pair<double, double> start,
+                                  pair<double, double> end,
+                                  pair<double, double> center,
+                                  pair<double, double> unitVector,
+                                  double lineLength,
+                                  double rSquared)
 {
-  pair<double,double> unitVector = {end.first - start.first,
-                                    end.second - start.second};
-  const double lineLength = sqrt(pow(unitVector.first, 2) +
-                                 pow(unitVector.second, 2));
-  unitVector.first /= lineLength;
-  unitVector.second /= lineLength;
-
   const double centerDistanceAlongLine =
     (unitVector.first*(center.first - start.first) +
      unitVector.second*(center.second - start.second));
@@ -415,18 +402,34 @@ bool lineSegmentIntersectsCircle(pair<double, double> start,
   }
 
   return (pow(center.first - nearestPointOnLine.first, 2) +
-          pow(center.second - nearestPointOnLine.second, 2) <= pow(r, 2));
+          pow(center.second - nearestPointOnLine.second, 2) <= rSquared);
+}
+
+bool lineSegmentIntersectsCircle(pair<double, double> start,
+                                 pair<double, double> end,
+                                 pair<double, double> center,
+                                 double rSquared)
+{
+  pair<double,double> unitVector = {end.first - start.first,
+                                    end.second - start.second};
+  const double lineLength = sqrt(pow(unitVector.first, 2) +
+                                 pow(unitVector.second, 2));
+  unitVector.first /= lineLength;
+  unitVector.second /= lineLength;
+
+  return lineSegmentIntersectsCircle2(start, end, center, unitVector, lineLength,
+                                      rSquared);
 }
 
 bool latticePointOverlapsShadow(
   pair<double, double> latticePoint,
   const vector<pair<double, double>>& convexHullUnshifted,
+  const vector<pair<double, double>>& unitVectors,
+  const vector<double>& lineLengths,
   pair<double, double> shift,
   size_t numDims,
-  double readoutResolution)
+  double rSquared)
 {
-  const double r = readoutResolution/2;
-
   bool foundLatticeCollision = false;
 
   // If the circle around a lattice point overlaps the 2D shadow of this box,
@@ -456,7 +459,8 @@ bool latticePointOverlapsShadow(
       convexHullUnshifted[iPoint+1].second + shift.second,
     };
 
-    if (lineSegmentIntersectsCircle(p1, p2, latticePoint, r))
+    if (lineSegmentIntersectsCircle2(p1, p2, latticePoint, unitVectors[iPoint],
+                                     lineLengths[iPoint], rSquared))
     {
       foundLatticeCollision = true;
       break;
@@ -576,11 +580,10 @@ bool tryProveGridCodeZeroImpossible_1D(
   size_t numDims,
   const double x0[],
   const double dims[],
-  double readoutResolution,
+  double r,
+  double rSquared,
   double vertexBuffer[])
 {
-  const double r = readoutResolution/2;
-
   const double point1 = x0[0];
   const double point2 = x0[0] + dims[0];
 
@@ -599,14 +602,14 @@ bool tryProveGridCodeZeroImpossible_1D(
     LatticePointEnumerator latticePoints(latticeBasisByModule[iModule],
                                          inverseLatticeBasisByModule[iModule],
                                          xmin, ymin, (xmax - xmin), (ymax - ymin),
-                                         r);
+                                         r, rSquared);
 
     pair<double, double> latticePoint;
     bool foundLatticeCollision = false;
     while (!foundLatticeCollision && latticePoints.getNext(&latticePoint))
     {
       foundLatticeCollision =
-        lineSegmentIntersectsCircle(p1, p2, latticePoint, r);
+        lineSegmentIntersectsCircle(p1, p2, latticePoint, rSquared);
     }
 
     if (!foundLatticeCollision)
@@ -620,6 +623,8 @@ bool tryProveGridCodeZeroImpossible_1D(
   return false;
 }
 
+const double shadowWidthThreshold = 0.5;
+
 /**
  * Quickly check whether this hyperrectangle excludes grid code zero
  * in any individual module.
@@ -631,9 +636,12 @@ bool tryProveGridCodeZeroImpossible(
   size_t numDims,
   const double x0[],
   const double dims[],
-  double readoutResolution,
+  double r,
+  double rSquared,
   double vertexBuffer[],
   vector<vector<vector<pair<double,double>>>>& cachedShadows,
+  vector<vector<vector<pair<double,double>>>>& cachedShadowUnitVectors,
+  vector<vector<vector<double>>>& cachedShadowLineLengths,
   vector<vector<BoundingBox2D>>& cachedShadowBoundingBoxes,
   size_t frameNumber)
 {
@@ -641,10 +649,8 @@ bool tryProveGridCodeZeroImpossible(
   {
     return tryProveGridCodeZeroImpossible_1D(
       domainToPlaneByModule, latticeBasisByModule, inverseLatticeBasisByModule,
-      numDims, x0, dims, readoutResolution, vertexBuffer);
+      numDims, x0, dims, r, rSquared, vertexBuffer);
   }
-
-  const double r = readoutResolution/2;
 
   NTA_ASSERT(frameNumber <= cachedShadowBoundingBoxes.size());
 
@@ -656,12 +662,17 @@ bool tryProveGridCodeZeroImpossible(
     vector<BoundingBox2D> boundingBoxByModule;
     boundingBoxByModule.reserve(domainToPlaneByModule.size());
 
+    vector<vector<pair<double,double>>> unitVectorsByModule;
+    unitVectorsByModule.reserve(domainToPlaneByModule.size());
+
+    vector<vector<double>> lineLengthsByModule;
+    lineLengthsByModule.reserve(domainToPlaneByModule.size());
+
     for (size_t iModule = 0; iModule < domainToPlaneByModule.size(); iModule++)
     {
       const vector<pair<double, double>> shadow =
         getShadowConvexHull(domainToPlaneByModule[iModule], numDims, dims,
                             vertexBuffer);
-      shadowByModule.push_back(shadow);
 
       BoundingBox2D boundingBox = {
         std::numeric_limits<double>::max(),
@@ -677,10 +688,49 @@ bool tryProveGridCodeZeroImpossible(
         boundingBox.ymax = std::max(boundingBox.ymax, p.second);
       }
       boundingBoxByModule.push_back(boundingBox);
+
+      if (boundingBox.xmax - boundingBox.xmin > shadowWidthThreshold ||
+          boundingBox.ymax - boundingBox.ymin > shadowWidthThreshold)
+      {
+        shadowByModule.push_back({});
+        unitVectorsByModule.push_back({});
+        lineLengthsByModule.push_back({});
+      }
+      else
+      {
+        shadowByModule.push_back(shadow);
+
+        vector<pair<double,double>> unitVectors;
+        unitVectors.reserve(shadow.size() - 1);
+
+        vector<double> lineLengths;
+        lineLengths.reserve(shadow.size() - 1);
+
+        for (size_t iPoint = 0; iPoint < shadow.size() - 1; iPoint++)
+        {
+          const pair<double,double> start = shadow[iPoint];
+          const pair<double,double> end = shadow[iPoint+1];
+
+          pair<double,double> unitVector = {end.first - start.first,
+                                            end.second - start.second};
+          const double lineLength = sqrt(pow(unitVector.first, 2) +
+                                         pow(unitVector.second, 2));
+          unitVector.first /= lineLength;
+          unitVector.second /= lineLength;
+
+          unitVectors.push_back(unitVector);
+          lineLengths.push_back(lineLength);
+        }
+
+        unitVectorsByModule.push_back(unitVectors);
+        lineLengthsByModule.push_back(lineLengths);
+      }
     }
 
     cachedShadows.push_back(shadowByModule);
     cachedShadowBoundingBoxes.push_back(boundingBoxByModule);
+    cachedShadowUnitVectors.push_back(unitVectorsByModule);
+    cachedShadowLineLengths.push_back(lineLengthsByModule);
   }
 
   for (size_t iModule = 0; iModule < domainToPlaneByModule.size(); iModule++)
@@ -698,7 +748,7 @@ bool tryProveGridCodeZeroImpossible(
     LatticePointEnumerator latticePoints(latticeBasisByModule[iModule],
                                          inverseLatticeBasisByModule[iModule],
                                          xmin, ymin, (xmax - xmin), (ymax - ymin),
-                                         r);
+                                         r, rSquared);
 
     pair<double, double> latticePoint;
     bool foundLatticeCollision = false;
@@ -721,8 +771,8 @@ bool tryProveGridCodeZeroImpossible(
       // To get the best of both worlds, we do non-thorough checks when the
       // shadow is large, and begin doing thorough checks when the shadow is
       // small.
-      if (xmax - xmin > 0.5 ||
-          ymax - ymin > 0.5)
+      if (xmax - xmin > shadowWidthThreshold ||
+          ymax - ymin > shadowWidthThreshold)
       {
         // Rely on the bounding box check.
         foundLatticeCollision = true;
@@ -732,7 +782,9 @@ bool tryProveGridCodeZeroImpossible(
         foundLatticeCollision =
           latticePointOverlapsShadow(latticePoint,
                                      cachedShadows[frameNumber][iModule],
-                                     shift, numDims, readoutResolution);
+                                     cachedShadowUnitVectors[frameNumber][iModule],
+                                     cachedShadowLineLengths[frameNumber][iModule],
+                                     shift, numDims, rSquared);
       }
     }
 
@@ -780,9 +832,13 @@ bool findGridCodeZeroHelper(
   size_t numDims,
   double x0[],
   double dims[],
-  double readoutResolution,
+  double r,
+  double rSquaredPositive,
+  double rSquaredNegative,
   double vertexBuffer[],
   vector<vector<vector<pair<double,double>>>>& cachedShadows,
+  vector<vector<vector<pair<double,double>>>>& cachedShadowUnitVectors,
+  vector<vector<vector<double>>>& cachedShadowLineLengths,
   vector<vector<BoundingBox2D>>& cachedShadowBoundingBoxes,
   size_t frameNumber,
   std::atomic<bool>& shouldContinue)
@@ -792,21 +848,22 @@ bool findGridCodeZeroHelper(
     return false;
   }
 
-  if (tryFindGridCodeZero(domainToPlaneByModule, latticeBasisByModule,
-                          inverseLatticeBasisByModule, numDims, x0, dims,
-                          readoutResolution, vertexBuffer))
-  {
-    return true;
-  }
-
   if (tryProveGridCodeZeroImpossible(domainToPlaneByModule,
                                      latticeBasisByModule,
                                      inverseLatticeBasisByModule, numDims, x0,
-                                     dims, readoutResolution, vertexBuffer,
-                                     cachedShadows, cachedShadowBoundingBoxes,
-                                     frameNumber))
+                                     dims, r, rSquaredNegative, vertexBuffer,
+                                     cachedShadows, cachedShadowUnitVectors,
+                                     cachedShadowLineLengths,
+                                     cachedShadowBoundingBoxes, frameNumber))
   {
     return false;
+  }
+
+  if (tryFindGridCodeZero(domainToPlaneByModule, latticeBasisByModule,
+                          inverseLatticeBasisByModule, numDims, x0, dims,
+                          rSquaredPositive, vertexBuffer))
+  {
+    return true;
   }
 
   size_t iWidestDim = std::distance(dims,
@@ -815,9 +872,10 @@ bool findGridCodeZeroHelper(
     SwapValueRAII swap1(&dims[iWidestDim], dims[iWidestDim] / 2);
     if (findGridCodeZeroHelper(
           domainToPlaneByModule, latticeBasisByModule,
-          inverseLatticeBasisByModule, numDims, x0, dims, readoutResolution,
-          vertexBuffer, cachedShadows, cachedShadowBoundingBoxes,
-          frameNumber + 1, shouldContinue))
+          inverseLatticeBasisByModule, numDims, x0, dims, r, rSquaredPositive,
+          rSquaredNegative, vertexBuffer, cachedShadows, cachedShadowUnitVectors,
+          cachedShadowLineLengths, cachedShadowBoundingBoxes, frameNumber + 1,
+          shouldContinue))
     {
       return true;
     }
@@ -826,8 +884,9 @@ bool findGridCodeZeroHelper(
       SwapValueRAII swap2(&x0[iWidestDim], x0[iWidestDim] + dims[iWidestDim]);
       return findGridCodeZeroHelper(
         domainToPlaneByModule, latticeBasisByModule,
-        inverseLatticeBasisByModule, numDims, x0, dims, readoutResolution,
-        vertexBuffer, cachedShadows, cachedShadowBoundingBoxes, frameNumber + 1,
+        inverseLatticeBasisByModule, numDims, x0, dims, r, rSquaredPositive,
+        rSquaredNegative, vertexBuffer, cachedShadows, cachedShadowUnitVectors,
+        cachedShadowLineLengths, cachedShadowBoundingBoxes, frameNumber + 1,
         shouldContinue);
     }
   }
@@ -989,6 +1048,15 @@ void findGridCodeZeroThread(size_t iThread, GridUniquenessState& state)
       dims = state.threadQueryDims[iThread];
     }
 
+    // Add a small epsilon to handle situations where floating point math causes
+    // a vertex to be non-zero-overlapping here and zero-overlapping in
+    // tryProveGridCodeZeroImpossible. With this addition, anything
+    // zero-overlapping in tryProveGridCodeZeroImpossible is guaranteed to be
+    // zero-overlapping here, so the program won't get caught in infinite
+    // recursion.
+    const double rSquaredPositive = pow(state.readoutResolution/2 + 0.000000001, 2);
+    const double rSquaredNegative = pow(state.readoutResolution/2, 2);
+
     // Perform the task.
 
     // Optimization mainly intended for 1D: if the box is large, break it into
@@ -1004,14 +1072,17 @@ void findGridCodeZeroThread(size_t iThread, GridUniquenessState& state)
       dims[0] = std::min(dims_0_orig - offset0, maxChunkLength);
 
       vector<vector<vector<pair<double,double>>>> cachedShadows;
+      vector<vector<vector<pair<double,double>>>> cachedShadowUnitVectors;
+      vector<vector<vector<double>>> cachedShadowLineLengths;
       vector<vector<BoundingBox2D>> cachedShadowBoundingBoxes;
 
       foundGridCodeZero = findGridCodeZeroHelper(
         state.domainToPlaneByModule, state.latticeBasisByModule,
         state.inverseLatticeBasisByModule, state.numDims, x0.data(),
-        dims.data(), state.readoutResolution, pointWithGridCodeZero.data(),
-        cachedShadows, cachedShadowBoundingBoxes, 0,
-        state.threadShouldContinue[iThread]);
+        dims.data(), state.readoutResolution/2, rSquaredPositive,
+        rSquaredNegative, pointWithGridCodeZero.data(), cachedShadows,
+        cachedShadowUnitVectors, cachedShadowLineLengths,
+        cachedShadowBoundingBoxes, 0, state.threadShouldContinue[iThread]);
     }
   }
 
@@ -1119,13 +1190,25 @@ bool nupic::experimental::grid_uniqueness::findGridCodeZero(
   }
 
   vector<vector<vector<pair<double,double>>>> cachedShadows;
+  vector<vector<vector<pair<double,double>>>> cachedShadowUnitVectors;
+  vector<vector<vector<double>>> cachedShadowLineLengths;
   vector<vector<BoundingBox2D>> cachedShadowBoundingBoxes;
+
+  // Add a small epsilon to handle situations where floating point math causes a
+  // vertex to be non-zero-overlapping here and zero-overlapping in
+  // tryProveGridCodeZeroImpossible. With this addition, anything
+  // zero-overlapping in tryProveGridCodeZeroImpossible is guaranteed to be
+  // zero-overlapping here, so the program won't get caught in infinite
+  // recursion.
+  const double rSquaredPositive = pow(readoutResolution/2 + 0.000000001, 2);
+  const double rSquaredNegative = pow(readoutResolution/2, 2);
 
   return findGridCodeZeroHelper(
     domainToPlaneByModule2, latticeBasisByModule2, inverseLatticeBasisByModule,
-    dimsCopy.size(), x0Copy.data(), dimsCopy.data(), readoutResolution,
-    pointWithGridCodeZero->data(),
-    cachedShadows, cachedShadowBoundingBoxes, 0, shouldContinue);
+    dimsCopy.size(), x0Copy.data(), dimsCopy.data(), readoutResolution/2,
+    rSquaredPositive, rSquaredNegative, pointWithGridCodeZero->data(),
+    cachedShadows, cachedShadowUnitVectors, cachedShadowLineLengths,
+    cachedShadowBoundingBoxes, 0, shouldContinue);
 }
 
 pair<double,vector<double>>
