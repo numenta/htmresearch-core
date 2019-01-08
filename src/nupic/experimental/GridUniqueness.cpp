@@ -1225,11 +1225,54 @@ nupic::experimental::grid_uniqueness::computeGridUniquenessHypercube(
 
     bool processingQuit = false;
 
+    bool printedInitialStatement = false;
+
     while (true)
     {
       if (state.finished.wait_until(lock,
                                     tNextPrint) == std::cv_status::timeout)
       {
+        if (!printedInitialStatement)
+        {
+          {
+            std::ostringstream oss;
+            oss << "[";
+
+            for (size_t iModule = 0;
+                 iModule < domainToPlaneByModule.size();
+                 iModule++)
+            {
+              oss << "[";
+              oss << vecs(domainToPlaneByModule[iModule][0]) << ",";
+              oss << vecs(domainToPlaneByModule[iModule][1]);
+              oss << "],";
+            }
+            oss << "]" << std::endl;
+            NTA_INFO << "domainToPlaneByModule:" << std::endl << oss.str();
+          }
+
+          {
+            std::ostringstream oss;
+            oss << "[";
+            for (size_t iModule = 0;
+                 iModule < latticeBasisByModule.size();
+                 iModule++)
+            {
+              oss << "[";
+              oss << vecs(latticeBasisByModule[iModule][0]) << ",";
+              oss << vecs(latticeBasisByModule[iModule][1]);
+              oss << "],";
+            }
+            oss << "]" << std::endl;
+
+            NTA_INFO << "latticeBasisByModule:" << std::endl << oss.str();
+          }
+
+          NTA_INFO << "readout resolution: " << readoutResolution;
+
+          printedInitialStatement = true;
+        }
+
         NTA_INFO << "";
         NTA_INFO << domainToPlaneByModule.size() << " modules, " << numDims
                  << " dimensions, "
