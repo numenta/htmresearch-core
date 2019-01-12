@@ -898,6 +898,7 @@ struct GridUniquenessState {
   const vector<vector<vector<double>>>& latticeBasisByModule;
   const vector<vector<vector<double>>>& inverseLatticeBasisByModule;
   const double readoutResolution;
+  const double meanScaleEstimate;
   const size_t numDims;
 
   // Task management
@@ -1023,6 +1024,17 @@ void findGridCodeZeroThread(size_t iThread, GridUniquenessState& state)
   vector<double> dims(state.numDims);
   vector<double> pointWithGridCodeZero(state.numDims);
 
+  vector<long long> numBinsByDim(state.numDims);
+
+  // Add a small epsilon to handle situations where floating point math causes
+  // a vertex to be non-zero-overlapping here and zero-overlapping in
+  // tryProveGridCodeZeroImpossible. With this addition, anything
+  // zero-overlapping in tryProveGridCodeZeroImpossible is guaranteed to be
+  // zero-overlapping here, so the program won't get caught in infinite
+  // recursion.
+  const double rSquaredPositive = pow(state.readoutResolution/2 + 0.000000001, 2);
+  const double rSquaredNegative = pow(state.readoutResolution/2, 2);
+
   while (!g_quitting)
   {
     // Modify the shared state. Record the results, decide the next task,
@@ -1048,33 +1060,38 @@ void findGridCodeZeroThread(size_t iThread, GridUniquenessState& state)
       dims = state.threadQueryDims[iThread];
     }
 
-    // Add a small epsilon to handle situations where floating point math causes
-    // a vertex to be non-zero-overlapping here and zero-overlapping in
-    // tryProveGridCodeZeroImpossible. With this addition, anything
-    // zero-overlapping in tryProveGridCodeZeroImpossible is guaranteed to be
-    // zero-overlapping here, so the program won't get caught in infinite
-    // recursion.
-    const double rSquaredPositive = pow(state.readoutResolution/2 + 0.000000001, 2);
-    const double rSquaredNegative = pow(state.readoutResolution/2, 2);
-
     // Perform the task.
 
-    // Optimization mainly intended for 1D: if the box is large, break it into
-    // small chunks rather than relying completely on the divide-and-conquer to
-    // break into reasonable-sized chunks.
-    const double x0_0_orig = x0[0];
-    const double dims_0_orig = dims[0];
-    const double maxChunkLength = 20.0;
-    for (double offset0 = 0; !foundGridCodeZero && offset0 < dims_0_orig;
-         offset0 += maxChunkLength)
-    {
-      x0[0] = x0_0_orig + offset0;
-      dims[0] = std::min(dims_0_orig - offset0, maxChunkLength);
+    vector<vector<vector<pair<double,double>>>> cachedShadows;
+    vector<vector<vector<pair<double,double>>>> cachedShadowUnitVectors;
+    vector<vector<vector<double>>> cachedShadowLineLengths;
+    vector<vector<BoundingBox2D>> cachedShadowBoundingBoxes;
 
-      vector<vector<vector<pair<double,double>>>> cachedShadows;
-      vector<vector<vector<pair<double,double>>>> cachedShadowUnitVectors;
-      vector<vector<vector<double>>> cachedShadowLineLengths;
-      vector<vector<BoundingBox2D>> cachedShadowBoundingBoxes;
+    // Optimization: if the box is large, break it into small chunks rather than
+    // relying completely on the divide-and-conquer to break into
+    // reasonable-sized chunks.
+
+    // Use a longer bin size for 1D. A 1D slice of a 2D plane can be relatively
+    // long before it has high probability of colliding with a lattice point in
+    // every module.
+    const double scalesPerBin = (state.numDims == 1)
+      ? 2.5
+      : 0.55;
+    for (size_t iDim = 0; iDim < state.numDims; iDim++)
+    {
+      numBinsByDim[iDim] = ceil(dims[iDim] / (scalesPerBin *
+                                              state.meanScaleEstimate));
+      dims[iDim] /= numBinsByDim[iDim];
+    }
+
+    const vector<double>& x0_orig = state.threadQueryX0[iThread];
+    vector<long long> currentBinByDim(state.numDims, 0);
+    while (state.threadShouldContinue[iThread])
+    {
+      for (size_t iDim = 0; iDim < state.numDims; iDim++)
+      {
+        x0[iDim] = x0_orig[iDim] + currentBinByDim[iDim]*dims[iDim];
+      }
 
       foundGridCodeZero = findGridCodeZeroHelper(
         state.domainToPlaneByModule, state.latticeBasisByModule,
@@ -1083,6 +1100,19 @@ void findGridCodeZeroThread(size_t iThread, GridUniquenessState& state)
         rSquaredNegative, pointWithGridCodeZero.data(), cachedShadows,
         cachedShadowUnitVectors, cachedShadowLineLengths,
         cachedShadowBoundingBoxes, 0, state.threadShouldContinue[iThread]);
+
+      if (foundGridCodeZero) break;
+
+      // Increment as little endian arithmetic with a varying base.
+      bool overflow = true;
+      for (size_t iDigit = 0; iDigit < state.numDims; iDigit++)
+      {
+        overflow = ++currentBinByDim[iDigit] == numBinsByDim[iDigit];
+        if (!overflow) break;
+        currentBinByDim[iDigit] = 0;
+      }
+
+      if (overflow) break;
     }
   }
 
@@ -1256,6 +1286,24 @@ nupic::experimental::grid_uniqueness::computeGridUniquenessHypercube(
     inverseLatticeBasisByModule.push_back(invert2DMatrix(latticeBasis));
   }
 
+  double meanScaleEstimate = 0.0;
+
+  for (const vector<vector<double>>& domainToPlane : domainToPlaneByModule2)
+  {
+    double longestDisplacementSquared = std::numeric_limits<double>::min();
+
+    for (size_t iDim = 0; iDim < numDims; iDim++)
+    {
+      longestDisplacementSquared = std::max(longestDisplacementSquared,
+                                            pow(domainToPlane[0][iDim], 2) +
+                                            pow(domainToPlane[1][iDim], 2));
+    }
+
+    const double scaleEstimate = 1 / sqrt(longestDisplacementSquared);
+    meanScaleEstimate += scaleEstimate;
+  }
+  meanScaleEstimate /= domainToPlaneByModule2.size();
+
   // Use condition_variables to enable periodic logging while waiting for the
   // threads to finish.
   std::mutex stateMutex;
@@ -1268,6 +1316,8 @@ nupic::experimental::grid_uniqueness::computeGridUniquenessHypercube(
     latticeBasisByModule2,
     inverseLatticeBasisByModule,
     readoutResolution,
+
+    meanScaleEstimate,
     numDims,
 
     ignoredCenterDiameter,
