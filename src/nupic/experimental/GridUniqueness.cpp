@@ -54,19 +54,26 @@ BOOST_GEOMETRY_REGISTER_BOOST_TUPLE_CS(cs::cartesian)
 
 static std::atomic<bool> g_quitting(false);
 
+template<typename T>
+struct SquareMatrix2D {
+  T v00;
+  T v01;
+  T v10;
+  T v11;
+};
 
-pair<double,double> transform2D(const vector<vector<double>>& M,
+pair<double,double> transform2D(const SquareMatrix2D<double>& M,
                                 pair<double,double> p)
 {
-  return {M[0][0]*p.first + M[0][1]*p.second,
-          M[1][0]*p.first + M[1][1]*p.second};
+  return {M.v00*p.first + M.v01*p.second,
+          M.v10*p.first + M.v11*p.second};
 }
 
-vector<vector<double>> invert2DMatrix(const vector<vector<double>>& M)
+SquareMatrix2D<double> invert2DMatrix(const vector<vector<double>>& M)
 {
   const double detInv = 1 / (M[0][0]*M[1][1] - M[0][1]*M[1][0]);
-  return {{detInv*M[1][1], -detInv*M[0][1]},
-          {-detInv*M[1][0], detInv*M[0][0]}};
+  return {detInv*M[1][1], -detInv*M[0][1],
+          -detInv*M[1][0], detInv*M[0][0]};
 }
 
 pair<double,double> transformND(const vector<vector<double>>& M,
@@ -87,6 +94,13 @@ pair<double,double> transformND(const vector<vector<double>>& M,
   return result;
 }
 
+
+struct LatticeBox {
+  double xmin;
+  double xmax;
+  pair<double,double> middle;
+};
+
 /**
  * Enumerate the points of a lattice near or within a specified rectangle. This
  * is equivalent to checking whether any circles centered on the points of a
@@ -95,27 +109,48 @@ pair<double,double> transformND(const vector<vector<double>>& M,
 class LatticePointEnumerator
 {
 public:
-  LatticePointEnumerator(const vector<vector<double>>& latticeBasis,
-                         const vector<vector<double>>& inverseLatticeBasis,
+  LatticePointEnumerator(const SquareMatrix2D<double>& latticeBasis,
+                         const SquareMatrix2D<double>& inverseLatticeBasis,
+                         const LatticeBox& cachedLatticeBox,
                          double x0, double y0, double width, double height,
                          double r, double rSquared)
-    :latticeBasis_(latticeBasis), x0_(x0), y0_(y0), width_(width),
-     height_(height), rSquared_(rSquared)
+    :latticeBasis_(latticeBasis), left_(x0), right_(x0 + width), bottom_(y0),
+     top_(y0 + height), rSquared_(rSquared)
+  {
+    const pair<double,double> ij = transform2D(inverseLatticeBasis, {x0, y0});
+    iMin_ = ceil(cachedLatticeBox.xmin + ij.first);
+    iMax_ = floor(cachedLatticeBox.xmax + ij.first);
+    i_ = iStart_ = floor(cachedLatticeBox.middle.first + ij.first);
+    j_ = j0_ = jStart_ = floor(cachedLatticeBox.middle.second + ij.second);
+  }
+
+  LatticePointEnumerator(const SquareMatrix2D<double>& latticeBasis,
+                         const SquareMatrix2D<double>& inverseLatticeBasis,
+                         double x0, double y0, double width, double height,
+                         double r, double rSquared)
+    :latticeBasis_(latticeBasis), left_(x0), right_(x0 + width), bottom_(y0),
+     top_(y0 + height), rSquared_(rSquared)
   {
     // Find the bounding box of the rectangle in the lattice's basis.
     double xmin = std::numeric_limits<double>::max();
     double xmax = std::numeric_limits<double>::lowest();
+
+    const double paddedLeft = left_ - r;
+    const double paddedRight = right_ + r;
+    const double paddedBottom = bottom_ - r;
+    const double paddedTop = top_ + r;
+
     pair<double, double> ij;
-    ij = transform2D(inverseLatticeBasis, {x0 - r, y0 - r});
+    ij = transform2D(inverseLatticeBasis, {paddedLeft, paddedBottom});
     xmin = std::min(xmin, ij.first);
     xmax = std::max(xmax, ij.first);
-    ij = transform2D(inverseLatticeBasis, {x0 + width + r, y0 - r});
+    ij = transform2D(inverseLatticeBasis, {paddedRight, paddedBottom});
     xmin = std::min(xmin, ij.first);
     xmax = std::max(xmax, ij.first);
-    ij = transform2D(inverseLatticeBasis, {x0 - r, y0 + height + r});
+    ij = transform2D(inverseLatticeBasis, {paddedLeft, paddedTop});
     xmin = std::min(xmin, ij.first);
     xmax = std::max(xmax, ij.first);
-    ij = transform2D(inverseLatticeBasis, {x0 + width + r, y0 + height + r});
+    ij = transform2D(inverseLatticeBasis, {paddedRight, paddedTop});
     xmin = std::min(xmin, ij.first);
     xmax = std::max(xmax, ij.first);
 
@@ -126,7 +161,8 @@ public:
     iStart_ = floor(ij.first);
     jStart_ = floor(ij.second);
 
-    this->restart();
+    i_ = iStart_;
+    j_ = j0_ = jStart_;
   }
 
   bool getNext(pair<double,double> *out)
@@ -137,12 +173,12 @@ public:
     {
       const pair<double, double> p = transform2D(latticeBasis_, {i_, j_});
 
-      const double nearestX = std::max(x0_,
+      const double nearestX = std::max(left_,
                                        std::min(p.first,
-                                                x0_ + width_));
-      const double nearestY = std::max(y0_,
+                                                right_));
+      const double nearestY = std::max(bottom_,
                                        std::min(p.second,
-                                                y0_ + height_));
+                                                top_));
 
       const double dSquared = (pow(p.first - nearestX, 2) +
                                pow(p.second - nearestY, 2));
@@ -216,11 +252,11 @@ public:
       {
         if (sweepingDown_)
         {
-          j_ -= 1;
+          --j_;
         }
         else
         {
-          j_ += 1;
+          ++j_;
         }
 
         dSquaredPrev_ = dSquared;
@@ -243,24 +279,22 @@ public:
 
 private:
 
-  const vector<vector<double>> &latticeBasis_;
-  const double x0_;
-  const double y0_;
-  const double width_;
-  const double height_;
+  const SquareMatrix2D<double>& latticeBasis_;
+  const double left_;
+  const double right_;
+  const double bottom_;
+  const double top_;
   const double rSquared_;
 
-  double dSquaredPrev_;
-  double innerSweepMin_;
-  // Initialize these because some compilers aren't convinced that these are
-  // guaranteed to be initialized before read.
+  double dSquaredPrev_ = std::numeric_limits<double>::max();
+  double innerSweepMin_ = std::numeric_limits<double>::max();
   long long jForInnerSweepMin_ = std::numeric_limits<long long>::lowest();
   long long jForInnerSweepMin_i0_ = std::numeric_limits<long long>::lowest();
   double dSquared_j0_;
 
-  bool finished_;
-  bool sweepingLeft_;
-  bool sweepingDown_;
+  bool finished_ = false;
+  bool sweepingLeft_ = true;
+  bool sweepingDown_ = true;
 
   long long iStart_;
   long long jStart_;
@@ -334,8 +368,8 @@ double mod1_05(double d)
  */
 bool tryFindGridCodeZero(
   const vector<vector<vector<double>>>& domainToPlaneByModule,
-  const vector<vector<vector<double>>>& latticeBasisByModule,
-  const vector<vector<vector<double>>>& inverseLatticeBasisByModule,
+  const vector<SquareMatrix2D<double>>& latticeBasisByModule,
+  const vector<SquareMatrix2D<double>>& inverseLatticeBasisByModule,
   size_t numDims,
   const double x0[],
   const double dims[],
@@ -575,8 +609,8 @@ struct BoundingBox2D {
  */
 bool tryProveGridCodeZeroImpossible_1D(
   const vector<vector<vector<double>>>& domainToPlaneByModule,
-  const vector<vector<vector<double>>>& latticeBasisByModule,
-  const vector<vector<vector<double>>>& inverseLatticeBasisByModule,
+  const vector<SquareMatrix2D<double>>& latticeBasisByModule,
+  const vector<SquareMatrix2D<double>>& inverseLatticeBasisByModule,
   size_t numDims,
   const double x0[],
   const double dims[],
@@ -631,8 +665,8 @@ const double shadowWidthThreshold = 0.5;
  */
 bool tryProveGridCodeZeroImpossible(
   const vector<vector<vector<double>>>& domainToPlaneByModule,
-  const vector<vector<vector<double>>>& latticeBasisByModule,
-  const vector<vector<vector<double>>>& inverseLatticeBasisByModule,
+  const vector<SquareMatrix2D<double>>& latticeBasisByModule,
+  const vector<SquareMatrix2D<double>>& inverseLatticeBasisByModule,
   size_t numDims,
   const double x0[],
   const double dims[],
@@ -643,6 +677,7 @@ bool tryProveGridCodeZeroImpossible(
   vector<vector<vector<pair<double,double>>>>& cachedShadowUnitVectors,
   vector<vector<vector<double>>>& cachedShadowLineLengths,
   vector<vector<BoundingBox2D>>& cachedShadowBoundingBoxes,
+  vector<vector<LatticeBox>>& cachedLatticeBoxes,
   size_t frameNumber)
 {
   if (numDims == 1)
@@ -661,6 +696,9 @@ bool tryProveGridCodeZeroImpossible(
 
     vector<BoundingBox2D> boundingBoxByModule;
     boundingBoxByModule.reserve(domainToPlaneByModule.size());
+
+    vector<LatticeBox> latticeBoxByModule;
+    latticeBoxByModule.reserve(domainToPlaneByModule.size());
 
     vector<vector<pair<double,double>>> unitVectorsByModule;
     unitVectorsByModule.reserve(domainToPlaneByModule.size());
@@ -688,6 +726,41 @@ bool tryProveGridCodeZeroImpossible(
         boundingBox.ymax = std::max(boundingBox.ymax, p.second);
       }
       boundingBoxByModule.push_back(boundingBox);
+
+      // Find the bounding box of the rectangle in the lattice's basis.
+      const double paddedLeft = boundingBox.xmin - r;
+      const double paddedRight = boundingBox.xmax + r;
+      const double paddedBottom = boundingBox.ymin - r;
+      const double paddedTop = boundingBox.ymax + r;
+
+      double xmin = std::numeric_limits<double>::max();
+      double xmax = std::numeric_limits<double>::lowest();
+
+      pair<double, double> ij;
+      ij = transform2D(inverseLatticeBasisByModule[iModule],
+                       {paddedLeft, paddedBottom});
+      xmin = std::min(xmin, ij.first);
+      xmax = std::max(xmax, ij.first);
+      ij = transform2D(inverseLatticeBasisByModule[iModule],
+                       {paddedRight, paddedBottom});
+      xmin = std::min(xmin, ij.first);
+      xmax = std::max(xmax, ij.first);
+      ij = transform2D(inverseLatticeBasisByModule[iModule],
+                       {paddedLeft, paddedTop});
+      xmin = std::min(xmin, ij.first);
+      xmax = std::max(xmax, ij.first);
+      ij = transform2D(inverseLatticeBasisByModule[iModule],
+                       {paddedRight, paddedTop});
+      xmin = std::min(xmin, ij.first);
+      xmax = std::max(xmax, ij.first);
+
+      latticeBoxByModule.push_back({
+          xmin,
+          xmax,
+          transform2D(inverseLatticeBasisByModule[iModule],
+                      {(paddedRight + paddedLeft) / 2,
+                       (paddedTop + paddedBottom) / 2})
+        });
 
       if (boundingBox.xmax - boundingBox.xmin > shadowWidthThreshold ||
           boundingBox.ymax - boundingBox.ymin > shadowWidthThreshold)
@@ -729,6 +802,7 @@ bool tryProveGridCodeZeroImpossible(
 
     cachedShadows.push_back(shadowByModule);
     cachedShadowBoundingBoxes.push_back(boundingBoxByModule);
+    cachedLatticeBoxes.push_back(latticeBoxByModule);
     cachedShadowUnitVectors.push_back(unitVectorsByModule);
     cachedShadowLineLengths.push_back(lineLengthsByModule);
   }
@@ -746,9 +820,10 @@ bool tryProveGridCodeZeroImpossible(
     const double ymax = boundingBox.ymax + shift.second;
 
     LatticePointEnumerator latticePoints(latticeBasisByModule[iModule],
-                                         inverseLatticeBasisByModule[iModule],
-                                         xmin, ymin, (xmax - xmin), (ymax - ymin),
-                                         r, rSquared);
+                                          inverseLatticeBasisByModule[iModule],
+                                          cachedLatticeBoxes[frameNumber][iModule],
+                                          xmin, ymin, (xmax - xmin), (ymax - ymin),
+                                          r, rSquared);
 
     pair<double, double> latticePoint;
     bool foundLatticeCollision = false;
@@ -827,8 +902,8 @@ private:
  */
 bool findGridCodeZeroHelper(
   const vector<vector<vector<double>>>& domainToPlaneByModule,
-  const vector<vector<vector<double>>>& latticeBasisByModule,
-  const vector<vector<vector<double>>>& inverseLatticeBasisByModule,
+  const vector<SquareMatrix2D<double>>& latticeBasisByModule,
+  const vector<SquareMatrix2D<double>>& inverseLatticeBasisByModule,
   size_t numDims,
   double x0[],
   double dims[],
@@ -840,6 +915,7 @@ bool findGridCodeZeroHelper(
   vector<vector<vector<pair<double,double>>>>& cachedShadowUnitVectors,
   vector<vector<vector<double>>>& cachedShadowLineLengths,
   vector<vector<BoundingBox2D>>& cachedShadowBoundingBoxes,
+  vector<vector<LatticeBox>>& cachedLatticeBoxes,
   size_t frameNumber,
   std::atomic<bool>& shouldContinue)
 {
@@ -854,7 +930,9 @@ bool findGridCodeZeroHelper(
                                      dims, r, rSquaredNegative, vertexBuffer,
                                      cachedShadows, cachedShadowUnitVectors,
                                      cachedShadowLineLengths,
-                                     cachedShadowBoundingBoxes, frameNumber))
+                                     cachedShadowBoundingBoxes,
+                                     cachedLatticeBoxes,
+                                     frameNumber))
   {
     return false;
   }
@@ -874,8 +952,8 @@ bool findGridCodeZeroHelper(
           domainToPlaneByModule, latticeBasisByModule,
           inverseLatticeBasisByModule, numDims, x0, dims, r, rSquaredPositive,
           rSquaredNegative, vertexBuffer, cachedShadows, cachedShadowUnitVectors,
-          cachedShadowLineLengths, cachedShadowBoundingBoxes, frameNumber + 1,
-          shouldContinue))
+          cachedShadowLineLengths, cachedShadowBoundingBoxes, cachedLatticeBoxes,
+          frameNumber + 1, shouldContinue))
     {
       return true;
     }
@@ -886,8 +964,8 @@ bool findGridCodeZeroHelper(
         domainToPlaneByModule, latticeBasisByModule,
         inverseLatticeBasisByModule, numDims, x0, dims, r, rSquaredPositive,
         rSquaredNegative, vertexBuffer, cachedShadows, cachedShadowUnitVectors,
-        cachedShadowLineLengths, cachedShadowBoundingBoxes, frameNumber + 1,
-        shouldContinue);
+        cachedShadowLineLengths, cachedShadowBoundingBoxes, cachedLatticeBoxes,
+        frameNumber + 1, shouldContinue);
     }
   }
 }
@@ -895,8 +973,8 @@ bool findGridCodeZeroHelper(
 struct GridUniquenessState {
   // Constants (thread-safe)
   const vector<vector<vector<double>>>& domainToPlaneByModule;
-  const vector<vector<vector<double>>>& latticeBasisByModule;
-  const vector<vector<vector<double>>>& inverseLatticeBasisByModule;
+  const vector<SquareMatrix2D<double>>& latticeBasisByModule;
+  const vector<SquareMatrix2D<double>>& inverseLatticeBasisByModule;
   const double readoutResolution;
   const double meanScaleEstimate;
   const size_t numDims;
@@ -1066,6 +1144,7 @@ void findGridCodeZeroThread(size_t iThread, GridUniquenessState& state)
     vector<vector<vector<pair<double,double>>>> cachedShadowUnitVectors;
     vector<vector<vector<double>>> cachedShadowLineLengths;
     vector<vector<BoundingBox2D>> cachedShadowBoundingBoxes;
+    vector<vector<LatticeBox>> cachedLatticeBoxes;
 
     // Optimization: if the box is large, break it into small chunks rather than
     // relying completely on the divide-and-conquer to break into
@@ -1099,7 +1178,8 @@ void findGridCodeZeroThread(size_t iThread, GridUniquenessState& state)
         dims.data(), state.readoutResolution/2, rSquaredPositive,
         rSquaredNegative, pointWithGridCodeZero.data(), cachedShadows,
         cachedShadowUnitVectors, cachedShadowLineLengths,
-        cachedShadowBoundingBoxes, 0, state.threadShouldContinue[iThread]);
+        cachedShadowBoundingBoxes, cachedLatticeBoxes, 0,
+        state.threadShouldContinue[iThread]);
 
       if (foundGridCodeZero) break;
 
@@ -1213,9 +1293,13 @@ bool nupic::experimental::grid_uniqueness::findGridCodeZero(
   vector<vector<vector<double>>> latticeBasisByModule2(latticeBasisByModule);
   optimizeMatrices(&domainToPlaneByModule2, &latticeBasisByModule2);
 
-  vector<vector<vector<double>>> inverseLatticeBasisByModule;
+  vector<SquareMatrix2D<double>> latticeBasisByModule3;
+  vector<SquareMatrix2D<double>> inverseLatticeBasisByModule;
   for (const vector<vector<double>>& latticeBasis : latticeBasisByModule2)
   {
+    latticeBasisByModule3.push_back({
+        latticeBasis[0][0], latticeBasis[0][1],
+        latticeBasis[1][0], latticeBasis[1][1]});
     inverseLatticeBasisByModule.push_back(invert2DMatrix(latticeBasis));
   }
 
@@ -1223,6 +1307,7 @@ bool nupic::experimental::grid_uniqueness::findGridCodeZero(
   vector<vector<vector<pair<double,double>>>> cachedShadowUnitVectors;
   vector<vector<vector<double>>> cachedShadowLineLengths;
   vector<vector<BoundingBox2D>> cachedShadowBoundingBoxes;
+  vector<vector<LatticeBox>> cachedLatticeBoxes;
 
   // Add a small epsilon to handle situations where floating point math causes a
   // vertex to be non-zero-overlapping here and zero-overlapping in
@@ -1234,11 +1319,11 @@ bool nupic::experimental::grid_uniqueness::findGridCodeZero(
   const double rSquaredNegative = pow(readoutResolution/2, 2);
 
   return findGridCodeZeroHelper(
-    domainToPlaneByModule2, latticeBasisByModule2, inverseLatticeBasisByModule,
+    domainToPlaneByModule2, latticeBasisByModule3, inverseLatticeBasisByModule,
     dimsCopy.size(), x0Copy.data(), dimsCopy.data(), readoutResolution/2,
     rSquaredPositive, rSquaredNegative, pointWithGridCodeZero->data(),
     cachedShadows, cachedShadowUnitVectors, cachedShadowLineLengths,
-    cachedShadowBoundingBoxes, 0, shouldContinue);
+    cachedShadowBoundingBoxes, cachedLatticeBoxes, 0, shouldContinue);
 }
 
 pair<double,vector<double>>
@@ -1280,9 +1365,13 @@ nupic::experimental::grid_uniqueness::computeGridUniquenessHypercube(
   vector<vector<vector<double>>> latticeBasisByModule2(latticeBasisByModule);
   optimizeMatrices(&domainToPlaneByModule2, &latticeBasisByModule2);
 
-  vector<vector<vector<double>>> inverseLatticeBasisByModule;
+  vector<SquareMatrix2D<double>> latticeBasisByModule3;
+  vector<SquareMatrix2D<double>> inverseLatticeBasisByModule;
   for (const vector<vector<double>>& latticeBasis : latticeBasisByModule2)
   {
+    latticeBasisByModule3.push_back({
+        latticeBasis[0][0], latticeBasis[0][1],
+        latticeBasis[1][0], latticeBasis[1][1]});
     inverseLatticeBasisByModule.push_back(invert2DMatrix(latticeBasis));
   }
 
@@ -1313,7 +1402,7 @@ nupic::experimental::grid_uniqueness::computeGridUniquenessHypercube(
 
   GridUniquenessState state = {
     domainToPlaneByModule2,
-    latticeBasisByModule2,
+    latticeBasisByModule3,
     inverseLatticeBasisByModule,
     readoutResolution,
 
