@@ -113,10 +113,10 @@ public:
                          const SquareMatrix2D<double>& inverseLatticeBasis,
                          const LatticeBox& cachedLatticeBox,
                          const pair<double,double>& shift,
-                         double x0, double y0, double width, double height,
-                         double r, double rSquared)
-    :latticeBasis_(latticeBasis), left_(x0), right_(x0 + width), bottom_(y0),
-     top_(y0 + height), rSquared_(rSquared)
+                         double left, double right, double bottom, double top,
+                         double rSquared)
+    :latticeBasis_(latticeBasis), left_(left), right_(right), bottom_(bottom),
+     top_(top), rSquared_(rSquared)
   {
     const pair<double,double> ijShift = transform2D(inverseLatticeBasis, shift);
     iMin_ = ceil(cachedLatticeBox.xmin + ijShift.first);
@@ -127,10 +127,10 @@ public:
 
   LatticePointEnumerator(const SquareMatrix2D<double>& latticeBasis,
                          const SquareMatrix2D<double>& inverseLatticeBasis,
-                         double x0, double y0, double width, double height,
+                         double left, double right, double bottom, double top,
                          double r, double rSquared)
-    :latticeBasis_(latticeBasis), left_(x0), right_(x0 + width), bottom_(y0),
-     top_(y0 + height), rSquared_(rSquared)
+    :latticeBasis_(latticeBasis), left_(left), right_(right), bottom_(bottom),
+     top_(top), rSquared_(rSquared)
   {
     // Find the bounding box of the rectangle in the lattice's basis.
     double xmin = std::numeric_limits<double>::max();
@@ -158,7 +158,7 @@ public:
     iMin_ = ceil(xmin);
     iMax_ = floor(xmax);
 
-    ij = transform2D(inverseLatticeBasis, {x0, y0});
+    ij = transform2D(inverseLatticeBasis, {left, bottom});
     iStart_ = floor(ij.first);
     jStart_ = floor(ij.second);
 
@@ -636,8 +636,7 @@ bool tryProveGridCodeZeroImpossible_1D(
     const double ymax = std::max(p1.second, p2.second);
     LatticePointEnumerator latticePoints(latticeBasisByModule[iModule],
                                          inverseLatticeBasisByModule[iModule],
-                                         xmin, ymin, (xmax - xmin), (ymax - ymin),
-                                         r, rSquared);
+                                         xmin, xmax, ymin, ymax, r, rSquared);
 
     pair<double, double> latticePoint;
     bool foundLatticeCollision = false;
@@ -822,8 +821,8 @@ bool tryProveGridCodeZeroImpossible(
 
     LatticePointEnumerator latticePoints(
       latticeBasisByModule[iModule], inverseLatticeBasisByModule[iModule],
-      cachedLatticeBoxes[frameNumber][iModule], shift,
-      xmin, ymin, (xmax - xmin), (ymax - ymin), r, rSquared);
+      cachedLatticeBoxes[frameNumber][iModule], shift, xmin, xmax, ymin, ymax,
+      rSquared);
 
     pair<double, double> latticePoint;
     bool foundLatticeCollision = false;
