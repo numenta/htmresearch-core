@@ -754,7 +754,7 @@ namespace nupic {
       };
 
     } // end namespace apical_tiebreak_temporal_memory
-  } // end namespace algorithms
+  } // end namespace experimental
 } // end namespace nupic
 
 #endif // NTA_APICAL_TIEBREAK_TM_HPP
