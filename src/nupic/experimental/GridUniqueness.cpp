@@ -112,24 +112,25 @@ public:
   LatticePointEnumerator(const SquareMatrix2D<double>& latticeBasis,
                          const SquareMatrix2D<double>& inverseLatticeBasis,
                          const LatticeBox& cachedLatticeBox,
-                         double x0, double y0, double width, double height,
-                         double r, double rSquared)
-    :latticeBasis_(latticeBasis), left_(x0), right_(x0 + width), bottom_(y0),
-     top_(y0 + height), rSquared_(rSquared)
+                         const pair<double,double>& shift,
+                         double left, double right, double bottom, double top,
+                         double rSquared)
+    :latticeBasis_(latticeBasis), left_(left), right_(right), bottom_(bottom),
+     top_(top), rSquared_(rSquared)
   {
-    const pair<double,double> ij = transform2D(inverseLatticeBasis, {x0, y0});
-    iMin_ = ceil(cachedLatticeBox.xmin + ij.first);
-    iMax_ = floor(cachedLatticeBox.xmax + ij.first);
-    i_ = iStart_ = floor(cachedLatticeBox.middle.first + ij.first);
-    j_ = j0_ = jStart_ = floor(cachedLatticeBox.middle.second + ij.second);
+    const pair<double,double> ijShift = transform2D(inverseLatticeBasis, shift);
+    iMin_ = ceil(cachedLatticeBox.xmin + ijShift.first);
+    iMax_ = floor(cachedLatticeBox.xmax + ijShift.first);
+    i_ = iStart_ = floor(cachedLatticeBox.middle.first + ijShift.first);
+    j_ = j0_ = jStart_ = floor(cachedLatticeBox.middle.second + ijShift.second);
   }
 
   LatticePointEnumerator(const SquareMatrix2D<double>& latticeBasis,
                          const SquareMatrix2D<double>& inverseLatticeBasis,
-                         double x0, double y0, double width, double height,
+                         double left, double right, double bottom, double top,
                          double r, double rSquared)
-    :latticeBasis_(latticeBasis), left_(x0), right_(x0 + width), bottom_(y0),
-     top_(y0 + height), rSquared_(rSquared)
+    :latticeBasis_(latticeBasis), left_(left), right_(right), bottom_(bottom),
+     top_(top), rSquared_(rSquared)
   {
     // Find the bounding box of the rectangle in the lattice's basis.
     double xmin = std::numeric_limits<double>::max();
@@ -157,7 +158,7 @@ public:
     iMin_ = ceil(xmin);
     iMax_ = floor(xmax);
 
-    ij = transform2D(inverseLatticeBasis, {x0, y0});
+    ij = transform2D(inverseLatticeBasis, {left, bottom});
     iStart_ = floor(ij.first);
     jStart_ = floor(ij.second);
 
@@ -635,8 +636,7 @@ bool tryProveGridCodeZeroImpossible_1D(
     const double ymax = std::max(p1.second, p2.second);
     LatticePointEnumerator latticePoints(latticeBasisByModule[iModule],
                                          inverseLatticeBasisByModule[iModule],
-                                         xmin, ymin, (xmax - xmin), (ymax - ymin),
-                                         r, rSquared);
+                                         xmin, xmax, ymin, ymax, r, rSquared);
 
     pair<double, double> latticePoint;
     bool foundLatticeCollision = false;
@@ -819,11 +819,10 @@ bool tryProveGridCodeZeroImpossible(
     const double ymin = boundingBox.ymin + shift.second;
     const double ymax = boundingBox.ymax + shift.second;
 
-    LatticePointEnumerator latticePoints(latticeBasisByModule[iModule],
-                                          inverseLatticeBasisByModule[iModule],
-                                          cachedLatticeBoxes[frameNumber][iModule],
-                                          xmin, ymin, (xmax - xmin), (ymax - ymin),
-                                          r, rSquared);
+    LatticePointEnumerator latticePoints(
+      latticeBasisByModule[iModule], inverseLatticeBasisByModule[iModule],
+      cachedLatticeBoxes[frameNumber][iModule], shift, xmin, xmax, ymin, ymax,
+      rSquared);
 
     pair<double, double> latticePoint;
     bool foundLatticeCollision = false;
@@ -1146,63 +1145,33 @@ void findGridCodeZeroThread(size_t iThread, GridUniquenessState& state)
     vector<vector<BoundingBox2D>> cachedShadowBoundingBoxes;
     vector<vector<LatticeBox>> cachedLatticeBoxes;
 
-    if (state.numDims <= 3)
+    // Optimization: if the box is large, break it into small chunks rather than
+    // relying completely on the divide-and-conquer to break into
+    // reasonable-sized chunks.
+
+    // Use a longer bin size for 1D. A 1D slice of a 2D plane can be relatively
+    // long before it has high probability of colliding with a lattice point in
+    // every module.
+    const double scalesPerBin = (state.numDims == 1)
+      ? 2.5
+      : 0.55;
+
+    for (size_t iDim = 0; iDim < state.numDims; iDim++)
     {
-      // Optimization: if the box is large, break it into small chunks rather
-      // than relying completely on the divide-and-conquer to break into
-      // reasonable-sized chunks. As the number of dimensions increases, this
-      // optimization actually starts having negative effects because a large
-      // n-dimensional box will often have a small shadow on the projection
-      // plane, so running the algorithm on large boxes can be much faster.
+      numBinsByDim[iDim] = ceil(dims[iDim] / (scalesPerBin *
+                                              state.meanScaleEstimate));
+      dims[iDim] /= numBinsByDim[iDim];
+    }
 
-      // Use a longer bin size for 1D. A 1D slice of a 2D plane can be
-      // relatively long before it has high probability of colliding with a
-      // lattice point in every module.
-      const double scalesPerBin = (state.numDims == 1)
-        ? 2.5
-        : 0.55;
-
+    const vector<double>& x0_orig = state.threadQueryX0[iThread];
+    vector<long long> currentBinByDim(state.numDims, 0);
+    while (state.threadShouldContinue[iThread])
+    {
       for (size_t iDim = 0; iDim < state.numDims; iDim++)
       {
-        numBinsByDim[iDim] = ceil(dims[iDim] / (scalesPerBin *
-                                                state.meanScaleEstimate));
-        dims[iDim] /= numBinsByDim[iDim];
+        x0[iDim] = x0_orig[iDim] + currentBinByDim[iDim]*dims[iDim];
       }
 
-      const vector<double>& x0_orig = state.threadQueryX0[iThread];
-      vector<long long> currentBinByDim(state.numDims, 0);
-      while (state.threadShouldContinue[iThread])
-      {
-        for (size_t iDim = 0; iDim < state.numDims; iDim++)
-        {
-          x0[iDim] = x0_orig[iDim] + currentBinByDim[iDim]*dims[iDim];
-        }
-
-        foundGridCodeZero = findGridCodeZeroHelper(
-          state.domainToPlaneByModule, state.latticeBasisByModule,
-          state.inverseLatticeBasisByModule, state.numDims, x0.data(),
-          dims.data(), state.readoutResolution/2, rSquaredPositive,
-          rSquaredNegative, pointWithGridCodeZero.data(), cachedShadows,
-          cachedShadowUnitVectors, cachedShadowLineLengths,
-          cachedShadowBoundingBoxes, cachedLatticeBoxes, 0,
-          state.threadShouldContinue[iThread]);
-
-        if (foundGridCodeZero) break;
-
-        // Increment as little endian arithmetic with a varying base.
-        bool overflow = true;
-        for (size_t iDigit = 0; iDigit < state.numDims; iDigit++)
-        {
-          overflow = ++currentBinByDim[iDigit] == numBinsByDim[iDigit];
-          if (!overflow) break;
-          currentBinByDim[iDigit] = 0;
-        }
-
-        if (overflow) break;
-      }
-    }
-    else
-    {
       foundGridCodeZero = findGridCodeZeroHelper(
         state.domainToPlaneByModule, state.latticeBasisByModule,
         state.inverseLatticeBasisByModule, state.numDims, x0.data(),
@@ -1211,6 +1180,19 @@ void findGridCodeZeroThread(size_t iThread, GridUniquenessState& state)
         cachedShadowUnitVectors, cachedShadowLineLengths,
         cachedShadowBoundingBoxes, cachedLatticeBoxes, 0,
         state.threadShouldContinue[iThread]);
+
+      if (foundGridCodeZero) break;
+
+      // Increment as little endian arithmetic with a varying base.
+      bool overflow = true;
+      for (size_t iDigit = 0; iDigit < state.numDims; iDigit++)
+      {
+        overflow = ++currentBinByDim[iDigit] == numBinsByDim[iDigit];
+        if (!overflow) break;
+        currentBinByDim[iDigit] = 0;
+      }
+
+      if (overflow) break;
     }
   }
 
