@@ -112,16 +112,17 @@ public:
   LatticePointEnumerator(const SquareMatrix2D<double>& latticeBasis,
                          const SquareMatrix2D<double>& inverseLatticeBasis,
                          const LatticeBox& cachedLatticeBox,
+                         const pair<double,double>& shift,
                          double x0, double y0, double width, double height,
                          double r, double rSquared)
     :latticeBasis_(latticeBasis), left_(x0), right_(x0 + width), bottom_(y0),
      top_(y0 + height), rSquared_(rSquared)
   {
-    const pair<double,double> ij = transform2D(inverseLatticeBasis, {x0, y0});
-    iMin_ = ceil(cachedLatticeBox.xmin + ij.first);
-    iMax_ = floor(cachedLatticeBox.xmax + ij.first);
-    i_ = iStart_ = floor(cachedLatticeBox.middle.first + ij.first);
-    j_ = j0_ = jStart_ = floor(cachedLatticeBox.middle.second + ij.second);
+    const pair<double,double> ijShift = transform2D(inverseLatticeBasis, shift);
+    iMin_ = ceil(cachedLatticeBox.xmin + ijShift.first);
+    iMax_ = floor(cachedLatticeBox.xmax + ijShift.first);
+    i_ = iStart_ = floor(cachedLatticeBox.middle.first + ijShift.first);
+    j_ = j0_ = jStart_ = floor(cachedLatticeBox.middle.second + ijShift.second);
   }
 
   LatticePointEnumerator(const SquareMatrix2D<double>& latticeBasis,
@@ -819,11 +820,10 @@ bool tryProveGridCodeZeroImpossible(
     const double ymin = boundingBox.ymin + shift.second;
     const double ymax = boundingBox.ymax + shift.second;
 
-    LatticePointEnumerator latticePoints(latticeBasisByModule[iModule],
-                                          inverseLatticeBasisByModule[iModule],
-                                          cachedLatticeBoxes[frameNumber][iModule],
-                                          xmin, ymin, (xmax - xmin), (ymax - ymin),
-                                          r, rSquared);
+    LatticePointEnumerator latticePoints(
+      latticeBasisByModule[iModule], inverseLatticeBasisByModule[iModule],
+      cachedLatticeBoxes[frameNumber][iModule], shift,
+      xmin, ymin, (xmax - xmin), (ymax - ymin), r, rSquared);
 
     pair<double, double> latticePoint;
     bool foundLatticeCollision = false;

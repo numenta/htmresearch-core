@@ -634,6 +634,35 @@ namespace {
                                  {sideLength, sideLength}, readoutResolution));
   }
 
+  /**
+   * A specific failure case that wasn't caught by other unit tests.
+   */
+  TEST(GridUniquenessTest, SpecificRegressionTest1)
+  {
+    const vector<vector<vector<double>>> domainToPlaneByModule = {
+      {{-0.030776, -0.240687, -0.459375},{0.276544, 0.381681, -0.218507}},
+      {{0.268763, 0.231442, 0.473435},{-0.408695, 0.427045, 0.0232472}},
+      {{0.510017, -0.41195, 0.166473},{0.233775, 0.0332796, -0.633857}},
+      {{0.527072, -0.308923, -0.411208},{0.499403, 0.448174, 0.303424}},
+      {{0.0695231, 0.92737, -0.0896616},{-0.0773771, 0.0953474, 0.92618}},
+      {{0.608297, -0.302698, -0.651094},{-0.697193, -0.453032, -0.440749}},};
+    const vector<vector<vector<double>>> latticeBasisByModule = {
+      {{1, 0.5},{0, 0.866025}},
+      {{1, 0.5},{0, 0.866025}},
+      {{1, 0.5},{0, 0.866025}},
+      {{1, 0.5},{0, 0.866025}},
+      {{1, 0.5},{0, 0.866025}},
+      {{1, 0.5},{0, 0.866025}},};
+
+    const double readoutResolution = 0.08;
+
+    ASSERT_TRUE(
+      findGridCodeZero(domainToPlaneByModule, latticeBasisByModule,
+                       {83.5038, -373.482, 503.877},
+                       {0.830883, 0.830883, 0.719825},
+                       readoutResolution));
+  }
+
   TEST(GridUniquenessTest, DeterministicDespiteMultithreading)
   {
     // This is a previously randomly-generated matrix that triggers multiple
