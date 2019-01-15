@@ -105,6 +105,16 @@ struct LatticeBox {
  * Enumerate the points of a lattice near or within a specified rectangle. This
  * is equivalent to checking whether any circles centered on the points of a
  * lattice overlap the rectangle.
+ *
+ * This enumeration works by first guessing at an initial lattice point (i, j),
+ * then performing a series of nested sweeps. It sweeps downward, decrementing j
+ * until decrementing j causes the distance of the lattice point from the
+ * rectangle to increase. Then it sweeps upward using the same rules. It sweeps
+ * leftward, decrementing i and repeating these downward and upward sweeps at
+ * each i until it passes the lowest i possible for this rectangle. It repeats
+ * the process sweeping right. As it sweeps left and right it attempts to choose
+ * a good starting j value by considering results from the previous downward and
+ * upward sweeps.
  */
 class LatticePointEnumerator
 {
@@ -170,7 +180,7 @@ public:
   {
     bool foundContainedPoint = false;
 
-    while (!foundContainedPoint && i_ <= iMax_)
+    while (!foundContainedPoint && (!sweepingLeft_ || i_ <= iMax_))
     {
       const pair<double, double> p = transform2D(latticeBasis_, {i_, j_});
 
