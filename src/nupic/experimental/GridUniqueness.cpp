@@ -180,7 +180,7 @@ public:
   {
     bool foundContainedPoint = false;
 
-    while (!foundContainedPoint && (!sweepingLeft_ || i_ <= iMax_))
+    while (!foundContainedPoint && (sweepingLeft_ || i_ <= iMax_))
     {
       const pair<double, double> p = transform2D(latticeBasis_, {i_, j_});
 
