@@ -130,6 +130,42 @@ namespace nupic {
         const std::vector<std::vector<std::vector<Real64>>>& latticeBasisByModule,
         Real64 readoutResolution,
         Real64 ignoredCenterDiameter);
+
+      /**
+       * Compute the sidelength of the smallest hypercube that encloses the
+       * intersection of all of the modules' firing fields centered at the
+       * origin. This sidelength is like a resolution of the code.
+       *
+       * @param domainToPlaneByModule
+       * A list of 2*k matrices, one per module. The matrix converts from a
+       * point in the domain to a point on a plane, normalizing for grid cell
+       * scale.
+       *
+       * @param readoutResolution
+       * The precision of readout of this grid code, measured in distance on the
+       * plane. For example, if this is 0.2, then all points on the plane are
+       * indistinguishable from those in their surrounding +- 0.1 range.
+       *
+       * @param resultPrecision
+       * The precision level for this sidelength. This algorithm will
+       * binary-search for the smallest hypercube it can place around zero,
+       * stopping at the point when it's within 'resultPrecision' of the actual
+       * smallest cube.
+       *
+       * @param upperBound
+       * Instructs the algorithm when it should give up. If the provided matrix
+       * never moves away from grid code zero, the algorithm could search
+       * forever. This parameter tells it when it should stop searching.
+       *
+       * @return
+       * The sidelength of this hypercube. Returns -1.0 if a surface can't be
+       * found (i.e. if upperBound is reached.)
+       */
+      Real64 computeBinSidelength(
+        const std::vector<std::vector<std::vector<Real64>>>& domainToPlaneByModule,
+        Real64 readoutResolution,
+        Real64 resultPrecision,
+        Real64 upperBound = 1000.0);
     }
   }
 }
