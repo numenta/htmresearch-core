@@ -689,4 +689,78 @@ namespace {
                                                0.2, 0.5).first);
     }
   }
+
+  TEST(GridUniquenessTest, binSidelengthBasicTest)
+  {
+    const vector<double> scales = {1, 2};
+    vector<vector<vector<double>>> domainToPlaneByModule;
+    for (double scale : scales)
+    {
+      domainToPlaneByModule.push_back({
+          {1/scale, 0},
+          {0, 1/scale},
+        });
+    }
+
+    const double phaseResolution = 0.2;
+    const double resultPrecision = 0.001;
+
+    const double result =
+      computeBinSidelength(domainToPlaneByModule, phaseResolution,
+                           resultPrecision);
+
+    const double expected = 2*(scales[0]*phaseResolution/2);
+    ASSERT_GE(result, expected);
+    ASSERT_LE(result, expected + resultPrecision);
+  }
+
+  TEST(GridUniquenessTest, binSidelengthRank1Test)
+  {
+    // Each firing field is a band. The first module creates
+    // horizontal stripes, the second creates vertical stripes. The
+    // intersection of two bands is a phaseResolution *
+    // phaseResolution square.
+    const vector<vector<vector<double>>> domainToPlaneByModule = {
+      {{0, 1},
+       {0, 0}},
+      {{1, 0},
+       {0, 0}}
+    };
+
+    const double phaseResolution = 0.2;
+    const double resultPrecision = 0.001;
+
+    const double result =
+      computeBinSidelength(domainToPlaneByModule, phaseResolution,
+                           resultPrecision);
+
+    const double expected = phaseResolution;
+
+    ASSERT_GE(result, expected);
+    ASSERT_LE(result, expected + resultPrecision);
+  }
+
+  TEST(GridUniquenessTest, binSidelength1DTest)
+  {
+    const vector<double> scales = {1, 2};
+    vector<vector<vector<double>>> domainToPlaneByModule;
+    for (double scale : scales)
+    {
+      domainToPlaneByModule.push_back({
+          {1/scale},
+          {0},
+        });
+    }
+
+    const double phaseResolution = 0.2;
+    const double resultPrecision = 0.001;
+
+    const double result =
+      computeBinSidelength(domainToPlaneByModule, phaseResolution,
+                           resultPrecision);
+
+    const double expected = 2*(scales[0]*phaseResolution/2);
+    ASSERT_GE(result, expected);
+    ASSERT_LE(result, expected + resultPrecision);
+  }
 }
