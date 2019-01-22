@@ -1842,12 +1842,14 @@ nupic::experimental::grid_uniqueness::computeBinSidelength(
     }
   }
 
-  // The radius needs to be twice as precise to get the sidelength
-  // sufficiently precise.
+  // The radius needs to be twice as precise to get the sidelength sufficiently
+  // precise.
   const double resultPrecision2 = resultPrecision / 2;
 
   double dec = (radius - tested) / 2;
-  while (dec > resultPrecision2)
+
+  // The possible error is equal to dec*2.
+  while (dec*2 > resultPrecision2)
   {
     const double testRadius = radius - dec;
 
