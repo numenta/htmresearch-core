@@ -1859,14 +1859,26 @@ bool findGridCodeZeroAtRadius(
     vector<double> x0(numDims, -radius);
     vector<double> dims(numDims, 2*radius);
 
+    // Optimization: for the final dimension, don't go negative. Half of the
+    // hypercube will be equal-and-opposite phases of the other half, so we
+    // ignore the lower half of the final dimension.
+    x0[numDims - 1] = 0;
+    dims[numDims - 1] = radius;
+
     dims[iDim] = 0;
-    if (findGridCodeZero_noModulo(domainToPlaneByModule,
-                                  x0, dims, readoutResolution,
-                                  shouldContinue))
+
+    // Test -r
+    if (iDim != numDims - 1)
     {
-      return true;
+      if (findGridCodeZero_noModulo(domainToPlaneByModule,
+                                    x0, dims, readoutResolution,
+                                    shouldContinue))
+      {
+        return true;
+      }
     }
 
+    // Test +r
     x0[iDim] = radius;
     if (findGridCodeZero_noModulo(domainToPlaneByModule,
                                   x0, dims, readoutResolution,
