@@ -52,69 +52,100 @@ namespace bg = boost::geometry;
 
 BOOST_GEOMETRY_REGISTER_BOOST_TUPLE_CS(cs::cartesian)
 
-static std::atomic<bool> g_quitting(false);
-static std::atomic<bool> g_computeBinSidelengthShouldContinue(true);
 
-static std::atomic<int> g_computeUniqueHypercubeCounter(0);
-static std::atomic<int> g_computeBinsSideLengthCounter(0);
-static std::atomic<int> g_captureInterruptsCounter(0);
+template<typename T>
+class ThreadSafeQueue {
+public:
+  void put(T v)
+  {
+    std::unique_lock<std::mutex> lock(mutex_);
+    queue_.push(v);
+    cv_.notify_one();
+  }
 
+  T take()
+  {
+    std::unique_lock<std::mutex> lock(mutex_);
+    while (queue_.empty())
+    {
+      cv_.wait(lock);
+    }
+
+    T ret = queue_.front();
+    queue_.pop();
+    return ret;
+  }
+
+private:
+  std::mutex mutex_;
+  std::condition_variable cv_;
+  std::queue<T> queue_;
+};
+
+
+enum Message {
+  Interrupt,
+  Exiting
+};
+
+
+static size_t g_captureInterruptsCounter = 0;
+static std::mutex g_messageQueuesMutex;
+static vector<ThreadSafeQueue<Message>*> g_messageQueues;
 static void (*g_prevHandler)(int) = nullptr;
 
 
 // Custom interrupt processing is particularly necessary in Jupyter notebooks.
 void processInterrupt(int sig)
 {
-  if (g_computeUniqueHypercubeCounter > 0)
   {
-    g_quitting = true;
-  }
-
-  if (g_computeBinsSideLengthCounter > 0)
-  {
-    g_computeBinSidelengthShouldContinue = false;
+    std::unique_lock<std::mutex> lock(g_messageQueuesMutex);
+    for (ThreadSafeQueue<Message>* messageQueue : g_messageQueues)
+    {
+      messageQueue->put(Message::Interrupt);
+    }
   }
 }
 
 class CaptureInterruptsRAII
 {
 public:
-  CaptureInterruptsRAII()
+  CaptureInterruptsRAII(ThreadSafeQueue<Message>* messages)
+    : messages_(messages)
   {
+    std::unique_lock<std::mutex> lock(g_messageQueuesMutex);
+
     if (g_captureInterruptsCounter++ == 0)
     {
       g_prevHandler = signal(SIGINT, processInterrupt);
     }
+
+    g_messageQueues.push_back(messages);
   }
 
   ~CaptureInterruptsRAII()
   {
+    std::unique_lock<std::mutex> lock(g_messageQueuesMutex);
+
     if (--g_captureInterruptsCounter == 0)
     {
       signal(SIGINT, g_prevHandler);
       g_prevHandler = nullptr;
     }
-  }
-};
 
-class IncrementRAII
-{
-public:
-  IncrementRAII(std::atomic<int>* counter)
-    : counter_(counter)
-  {
-    ++(*counter_);
-  }
-
-  ~IncrementRAII()
-  {
-    --(*counter_);
+    for (auto it = g_messageQueues.begin(); it != g_messageQueues.end(); it++)
+    {
+      if (*it == messages_)
+      {
+        g_messageQueues.erase(it);
+        break;
+      }
+    }
   }
 
 private:
-  std::atomic<int>* counter_;
+  ThreadSafeQueue<Message>* messages_;
 };
-
 
 template<typename T>
 struct SquareMatrix2D {
@@ -1073,6 +1104,7 @@ struct GridUniquenessState {
   vector<vector<double>> threadQueryX0;
   vector<vector<double>> threadQueryDims;
   vector<std::atomic<bool>> threadShouldContinue;
+  std::atomic<bool>& quitting;
   vector<bool> threadRunning;
 };
 
@@ -1187,7 +1219,7 @@ void findGridCodeZeroThread(size_t iThread, GridUniquenessState& state)
   const double rSquaredPositive = pow(state.readoutResolution/2 + 0.000000001, 2);
   const double rSquaredNegative = pow(state.readoutResolution/2, 2);
 
-  while (!g_quitting)
+  while (!state.quitting)
   {
     // Modify the shared state. Record the results, decide the next task,
     // volunteer to do it.
@@ -1407,13 +1439,24 @@ nupic::experimental::grid_uniqueness::computeGridUniquenessHypercube(
 {
   typedef std::chrono::steady_clock Clock;
 
-  if (g_computeUniqueHypercubeCounter == 0)
-  {
-    // Recover from any previous interrupts.
-    g_quitting = false;
-  }
-  IncrementRAII incrementCounter(&g_computeUniqueHypercubeCounter);
-  CaptureInterruptsRAII captureInterrupts;
+  ThreadSafeQueue<Message> messages;
+  CaptureInterruptsRAII captureInterrupts(&messages);
+
+  std::atomic<bool> quitting(false);
+  std::thread messageThread(
+    [&]() {
+      while (true)
+      {
+        switch(messages.take())
+        {
+          case Message::Interrupt:
+            quitting = true;
+            break;
+          case Message::Exiting:
+            return;
+        }
+      }
+    });
 
   NTA_CHECK(domainToPlaneByModule.size() == latticeBasisByModule.size())
     << "The two arrays of matrices must be the same length (one per module) "
@@ -1497,6 +1540,7 @@ nupic::experimental::grid_uniqueness::computeGridUniquenessHypercube(
     vector<vector<double>>(numThreads, vector<double>(numDims)),
     vector<vector<double>>(numThreads, vector<double>(numDims)),
     vector<std::atomic<bool>>(numThreads),
+    quitting,
     vector<bool>(numThreads, true),
   };
 
@@ -1606,7 +1650,7 @@ nupic::experimental::grid_uniqueness::computeGridUniquenessHypercube(
           }
         }
       }
-      else if (g_quitting && !processingQuit && state.numActiveThreads > 0)
+      else if (quitting && !processingQuit && state.numActiveThreads > 0)
       {
         // The condition_variable returned due to an interrupt. We still need to
         // wait for threads to exit.
@@ -1624,7 +1668,10 @@ nupic::experimental::grid_uniqueness::computeGridUniquenessHypercube(
     }
   }
 
-  if (g_quitting)
+  messages.put(Message::Exiting);
+  messageThread.join();
+
+  if (quitting)
   {
     NTA_THROW << "Caught interrupt signal";
   }
@@ -1898,13 +1945,24 @@ nupic::experimental::grid_uniqueness::computeBinSidelength(
   double resultPrecision,
   double upperBound)
 {
-  if (g_computeBinsSideLengthCounter == 0)
-  {
-    // Recover from any previous interrupts.
-    g_computeBinSidelengthShouldContinue = true;
-  }
-  IncrementRAII incrementCounter(&g_computeBinsSideLengthCounter);
-  CaptureInterruptsRAII captureInterrupts;
+  ThreadSafeQueue<Message> messages;
+  CaptureInterruptsRAII captureInterrupts(&messages);
+
+  std::atomic<bool> shouldContinue(true);
+  std::thread messageThread(
+    [&]() {
+      while (true)
+      {
+        switch(messages.take())
+        {
+          case Message::Interrupt:
+            shouldContinue = false;
+            break;
+          case Message::Exiting:
+            return;
+        }
+      }
+    });
 
   double tested = 0;
   double radius = 0.5;
@@ -1912,7 +1970,7 @@ nupic::experimental::grid_uniqueness::computeBinSidelength(
   while (findGridCodeZeroAtRadius(radius,
                                   domainToPlaneByModule,
                                   readoutResolution,
-                                  g_computeBinSidelengthShouldContinue))
+                                  shouldContinue))
   {
     tested = radius;
     radius *= 2;
@@ -1930,14 +1988,14 @@ nupic::experimental::grid_uniqueness::computeBinSidelength(
   double dec = (radius - tested) / 2;
 
   // The possible error is equal to dec*2.
-  while (g_computeBinSidelengthShouldContinue && dec*2 > resultPrecision2)
+  while (shouldContinue && dec*2 > resultPrecision2)
   {
     const double testRadius = radius - dec;
 
     if (!findGridCodeZeroAtRadius(testRadius,
                                   domainToPlaneByModule,
                                   readoutResolution,
-                                  g_computeBinSidelengthShouldContinue))
+                                  shouldContinue))
     {
       radius = testRadius;
     }
@@ -1945,7 +2003,10 @@ nupic::experimental::grid_uniqueness::computeBinSidelength(
     dec /= 2;
   }
 
-  if (!g_computeBinSidelengthShouldContinue)
+  messages.put(Message::Exiting);
+  messageThread.join();
+
+  if (!shouldContinue)
   {
     NTA_THROW << "Caught interrupt signal";
   }
