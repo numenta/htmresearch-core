@@ -173,6 +173,48 @@ namespace nupic {
         Real64 resultPrecision,
         Real64 upperBound = 1000.0,
         Real64 timeout = -1.0);
+
+      /**
+       * Like computeBinSidelength, but it computes a hyperrectangle rather than
+       * a hypercube.
+       *
+       * @param domainToPlaneByModule
+       * A list of 2*k matrices, one per module. The matrix converts from a
+       * point in the domain to a point on a plane, normalizing for grid cell
+       * scale.
+       *
+       * @param readoutResolution
+       * The precision of readout of this grid code, measured in distance on the
+       * plane. For example, if this is 0.2, then all points on the plane are
+       * indistinguishable from those in their surrounding +- 0.1 range.
+       *
+       * @param resultPrecision
+       * The precision level for this sidelength. This algorithm will
+       * binary-search for the smallest hyperrectangle it can place around zero,
+       * stopping at the point when each side is within 'resultPrecision' of the
+       * actual smallest hyperrectangle.
+       *
+       * @param upperBound
+       * Instructs the algorithm when it should give up. If the provided matrix
+       * never moves away from grid code zero, the algorithm could search
+       * forever. This parameter tells it when it should stop searching.
+       *
+       * @param timeout
+       * Specifies how long to try. This function will give up after 'timeout'
+       * seconds. If <= 0, the function will not time out. On timeout, the
+       * function throws an exception with message "timeout". In Python this
+       * exception is of type RuntimeError.
+       *
+       * @return
+       * The dimensions of this hyperrectangle. Returns an empty vector if a
+       * surface can't be found (i.e. if upperBound is reached.)
+       */
+      std::vector<Real64> computeBinRectangle(
+        const std::vector<std::vector<std::vector<Real64>>>& domainToPlaneByModule,
+        Real64 readoutResolution,
+        Real64 resultPrecision,
+        Real64 upperBound = 1000.0,
+        Real64 timeout = -1.0);
     }
   }
 }
