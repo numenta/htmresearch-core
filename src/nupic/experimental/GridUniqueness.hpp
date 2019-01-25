@@ -157,6 +157,12 @@ namespace nupic {
        * never moves away from grid code zero, the algorithm could search
        * forever. This parameter tells it when it should stop searching.
        *
+       * @param timeout
+       * Specifies how long to try. This function will give up after 'timeout'
+       * seconds. If <= 0, the function will not time out. On timeout, the
+       * function throws an exception with message "timeout". In Python this
+       * exception is of type RuntimeError.
+       *
        * @return
        * The sidelength of this hypercube. Returns -1.0 if a surface can't be
        * found (i.e. if upperBound is reached.)
@@ -165,7 +171,8 @@ namespace nupic {
         const std::vector<std::vector<std::vector<Real64>>>& domainToPlaneByModule,
         Real64 readoutResolution,
         Real64 resultPrecision,
-        Real64 upperBound = 1000.0);
+        Real64 upperBound = 1000.0,
+        Real64 timeout = -1.0);
     }
   }
 }

@@ -83,8 +83,55 @@ private:
 };
 
 
+class ScheduledTask {
+public:
+  template <typename T, typename F>
+  ScheduledTask(T tTimeout, F f)
+  {
+    timerThread_ = std::thread(
+      [&]()
+      {
+        std::unique_lock<std::mutex> lock(timerMutex_);
+
+        while (true)
+        {
+          if (timerCondition_.wait_until(lock, tTimeout) ==
+              std::cv_status::timeout)
+          {
+            f();
+            return;
+          }
+
+          if (timerCancelled_)
+          {
+            return;
+          }
+        }
+      });
+  }
+
+  ~ScheduledTask()
+  {
+    {
+      std::unique_lock<std::mutex> lock(timerMutex_);
+      timerCancelled_ = true;
+      timerCondition_.notify_one();
+    }
+    timerThread_.join();
+  }
+
+private:
+
+  std::mutex timerMutex_;
+  std::condition_variable timerCondition_;
+  bool timerCancelled_ = true;
+  std::thread timerThread_;
+};
+
+
 enum Message {
   Interrupt,
+  Timeout,
   Exiting
 };
 
@@ -1439,6 +1486,14 @@ nupic::experimental::grid_uniqueness::computeGridUniquenessHypercube(
 {
   typedef std::chrono::steady_clock Clock;
 
+  enum ExitReason {
+    Timeout,
+    Interrupt,
+    Completed
+  };
+
+  std::atomic<ExitReason> exitReason(ExitReason::Completed);
+
   ThreadSafeQueue<Message> messages;
   CaptureInterruptsRAII captureInterrupts(&messages);
 
@@ -1447,10 +1502,15 @@ nupic::experimental::grid_uniqueness::computeGridUniquenessHypercube(
     [&]() {
       while (true)
       {
-        switch(messages.take())
+        switch (messages.take())
         {
           case Message::Interrupt:
             quitting = true;
+            exitReason = ExitReason::Interrupt;
+            break;
+          case Message::Timeout:
+            quitting = true;
+            exitReason = ExitReason::Timeout;
             break;
           case Message::Exiting:
             return;
@@ -1671,12 +1731,16 @@ nupic::experimental::grid_uniqueness::computeGridUniquenessHypercube(
   messages.put(Message::Exiting);
   messageThread.join();
 
-  if (quitting)
+  switch (exitReason.load())
   {
-    NTA_THROW << "Caught interrupt signal";
+    case ExitReason::Timeout:
+      // Python code may check for the precise string "timeout".
+      NTA_THROW << "timeout";
+    case ExitReason::Interrupt:
+      NTA_THROW << "interrupt";
+    case ExitReason::Completed:
+      return {state.foundPointBaselineRadius, state.pointWithGridCodeZero};
   }
-
-  return {state.foundPointBaselineRadius, state.pointWithGridCodeZero};
 }
 
 bool tryFindGridCodeZero_noModulo(
@@ -1943,26 +2007,52 @@ nupic::experimental::grid_uniqueness::computeBinSidelength(
   const vector<vector<vector<double>>>& domainToPlaneByModule,
   double readoutResolution,
   double resultPrecision,
-  double upperBound)
+  double upperBound,
+  double timeout)
 {
+  typedef std::chrono::steady_clock Clock;
+
+  enum ExitReason {
+    Timeout,
+    Interrupt,
+    Completed
+  };
+
+  std::atomic<ExitReason> exitReason(ExitReason::Completed);
+
   ThreadSafeQueue<Message> messages;
   CaptureInterruptsRAII captureInterrupts(&messages);
 
   std::atomic<bool> shouldContinue(true);
+  std::atomic<bool> interrupted(false);
   std::thread messageThread(
     [&]() {
       while (true)
       {
-        switch(messages.take())
+        switch (messages.take())
         {
           case Message::Interrupt:
             shouldContinue = false;
+            exitReason = ExitReason::Interrupt;
+            interrupted = true;
+            break;
+          case Message::Timeout:
+            shouldContinue = false;
+            exitReason = ExitReason::Timeout;
             break;
           case Message::Exiting:
             return;
         }
       }
     });
+
+  ScheduledTask* scheduledTask = nullptr;
+  if (timeout > 0)
+  {
+    scheduledTask = new ScheduledTask(
+      Clock::now() + std::chrono::duration<double>(timeout),
+      [&](){ messages.put(Message::Timeout); });
+  }
 
   double tested = 0;
   double radius = 0.5;
@@ -2006,10 +2096,20 @@ nupic::experimental::grid_uniqueness::computeBinSidelength(
   messages.put(Message::Exiting);
   messageThread.join();
 
-  if (!shouldContinue)
+  if (scheduledTask != nullptr)
   {
-    NTA_THROW << "Caught interrupt signal";
+    delete scheduledTask;
+    scheduledTask = nullptr;
   }
 
-  return 2 * radius;
+  switch (exitReason.load())
+  {
+    case ExitReason::Timeout:
+      // Python code may check for the precise string "timeout".
+      NTA_THROW << "timeout";
+    case ExitReason::Interrupt:
+      NTA_THROW << "interrupt";
+    case ExitReason::Completed:
+      return 2*radius;
+  }
 }
