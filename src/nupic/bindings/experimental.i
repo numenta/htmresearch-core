@@ -215,18 +215,19 @@ using namespace nupic;
 
 %pythoncode %{
   def computeBinSidelength(domainToPlaneByModule, phaseResolution,
-                           resultPrecision, upperBound=1000.0):
+                           resultPrecision, upperBound=1000.0, timeout=-1.0):
     domainToPlaneByModule = numpy.asarray(domainToPlaneByModule, dtype="float64")
 
     return _computeBinSidelength(
-      domainToPlaneByModule, phaseResolution, resultPrecision, upperBound)
+      domainToPlaneByModule, phaseResolution, resultPrecision, upperBound, timeout)
 %}
 
 %inline {
   PyObject* _computeBinSidelength(PyObject* py_domainToPlaneByModule,
                                   Real64 readoutResolution,
                                   Real64 resultPrecision,
-                                  Real64 upperBound)
+                                  Real64 upperBound,
+                                  Real64 timeout)
   {
     PyArrayObject* pyArr_domainToPlaneByModule =
       (PyArrayObject*)py_domainToPlaneByModule;
@@ -253,7 +254,7 @@ using namespace nupic;
     Real64 result =
       nupic::experimental::grid_uniqueness::computeBinSidelength(
         domainToPlaneByModule, readoutResolution, resultPrecision,
-        upperBound);
+        upperBound, timeout);
 
     return PyFloat_FromDouble(result);
   }

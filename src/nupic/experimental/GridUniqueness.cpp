@@ -52,69 +52,147 @@ namespace bg = boost::geometry;
 
 BOOST_GEOMETRY_REGISTER_BOOST_TUPLE_CS(cs::cartesian)
 
-static std::atomic<bool> g_quitting(false);
-static std::atomic<bool> g_computeBinSidelengthShouldContinue(true);
 
-static std::atomic<int> g_computeUniqueHypercubeCounter(0);
-static std::atomic<int> g_computeBinsSideLengthCounter(0);
-static std::atomic<int> g_captureInterruptsCounter(0);
+template<typename T>
+class ThreadSafeQueue {
+public:
+  void put(T v)
+  {
+    std::unique_lock<std::mutex> lock(mutex_);
+    queue_.push(v);
+    cv_.notify_one();
+  }
 
+  T take()
+  {
+    std::unique_lock<std::mutex> lock(mutex_);
+    while (queue_.empty())
+    {
+      cv_.wait(lock);
+    }
+
+    T ret = queue_.front();
+    queue_.pop();
+    return ret;
+  }
+
+private:
+  std::mutex mutex_;
+  std::condition_variable cv_;
+  std::queue<T> queue_;
+};
+
+
+class ScheduledTask {
+public:
+  template <typename T, typename F>
+  ScheduledTask(T tTimeout, F f)
+  {
+    timerThread_ = std::thread(
+      [&]()
+      {
+        std::unique_lock<std::mutex> lock(timerMutex_);
+
+        while (true)
+        {
+          if (timerCondition_.wait_until(lock, tTimeout) ==
+              std::cv_status::timeout)
+          {
+            f();
+            return;
+          }
+
+          if (timerCancelled_)
+          {
+            return;
+          }
+        }
+      });
+  }
+
+  ~ScheduledTask()
+  {
+    {
+      std::unique_lock<std::mutex> lock(timerMutex_);
+      timerCancelled_ = true;
+      timerCondition_.notify_one();
+    }
+    timerThread_.join();
+  }
+
+private:
+
+  std::mutex timerMutex_;
+  std::condition_variable timerCondition_;
+  bool timerCancelled_ = true;
+  std::thread timerThread_;
+};
+
+
+enum Message {
+  Interrupt,
+  Timeout,
+  Exiting
+};
+
+
+static size_t g_captureInterruptsCounter = 0;
+static std::mutex g_messageQueuesMutex;
+static vector<ThreadSafeQueue<Message>*> g_messageQueues;
 static void (*g_prevHandler)(int) = nullptr;
 
 
 // Custom interrupt processing is particularly necessary in Jupyter notebooks.
 void processInterrupt(int sig)
 {
-  if (g_computeUniqueHypercubeCounter > 0)
   {
-    g_quitting = true;
-  }
-
-  if (g_computeBinsSideLengthCounter > 0)
-  {
-    g_computeBinSidelengthShouldContinue = false;
+    std::unique_lock<std::mutex> lock(g_messageQueuesMutex);
+    for (ThreadSafeQueue<Message>* messageQueue : g_messageQueues)
+    {
+      messageQueue->put(Message::Interrupt);
+    }
   }
 }
 
 class CaptureInterruptsRAII
 {
 public:
-  CaptureInterruptsRAII()
+  CaptureInterruptsRAII(ThreadSafeQueue<Message>* messages)
+    : messages_(messages)
   {
+    std::unique_lock<std::mutex> lock(g_messageQueuesMutex);
+
     if (g_captureInterruptsCounter++ == 0)
     {
       g_prevHandler = signal(SIGINT, processInterrupt);
     }
+
+    g_messageQueues.push_back(messages);
   }
 
   ~CaptureInterruptsRAII()
   {
+    std::unique_lock<std::mutex> lock(g_messageQueuesMutex);
+
     if (--g_captureInterruptsCounter == 0)
     {
       signal(SIGINT, g_prevHandler);
       g_prevHandler = nullptr;
     }
-  }
-};
 
-class IncrementRAII
-{
-public:
-  IncrementRAII(std::atomic<int>* counter)
-    : counter_(counter)
-  {
-    ++(*counter_);
-  }
-
-  ~IncrementRAII()
-  {
-    --(*counter_);
+    for (auto it = g_messageQueues.begin(); it != g_messageQueues.end(); it++)
+    {
+      if (*it == messages_)
+      {
+        g_messageQueues.erase(it);
+        break;
+      }
+    }
   }
 
 private:
-  std::atomic<int>* counter_;
+  ThreadSafeQueue<Message>* messages_;
 };
-
 
 template<typename T>
 struct SquareMatrix2D {
@@ -1067,12 +1145,14 @@ struct GridUniquenessState {
 
   // Thread management
   std::mutex& mutex;
-  std::condition_variable& finished;
+  std::condition_variable& finishedCondition;
+  bool finished;
   size_t numActiveThreads;
   vector<double> threadBaselineRadius;
   vector<vector<double>> threadQueryX0;
   vector<vector<double>> threadQueryDims;
   vector<std::atomic<bool>> threadShouldContinue;
+  std::atomic<bool>& quitting;
   vector<bool> threadRunning;
 };
 
@@ -1187,7 +1267,7 @@ void findGridCodeZeroThread(size_t iThread, GridUniquenessState& state)
   const double rSquaredPositive = pow(state.readoutResolution/2 + 0.000000001, 2);
   const double rSquaredNegative = pow(state.readoutResolution/2, 2);
 
-  while (!g_quitting)
+  while (!state.quitting)
   {
     // Modify the shared state. Record the results, decide the next task,
     // volunteer to do it.
@@ -1274,7 +1354,8 @@ void findGridCodeZeroThread(size_t iThread, GridUniquenessState& state)
     std::lock_guard<std::mutex> lock(state.mutex);
     if (--state.numActiveThreads == 0)
     {
-      state.finished.notify_all();
+      state.finished = true;
+      state.finishedCondition.notify_all();
     }
     state.threadRunning[iThread] = false;
   }
@@ -1407,13 +1488,37 @@ nupic::experimental::grid_uniqueness::computeGridUniquenessHypercube(
 {
   typedef std::chrono::steady_clock Clock;
 
-  if (g_computeUniqueHypercubeCounter == 0)
-  {
-    // Recover from any previous interrupts.
-    g_quitting = false;
-  }
-  IncrementRAII incrementCounter(&g_computeUniqueHypercubeCounter);
-  CaptureInterruptsRAII captureInterrupts;
+  enum ExitReason {
+    Timeout,
+    Interrupt,
+    Completed
+  };
+
+  std::atomic<ExitReason> exitReason(ExitReason::Completed);
+
+  ThreadSafeQueue<Message> messages;
+  CaptureInterruptsRAII captureInterrupts(&messages);
+
+  std::atomic<bool> quitting(false);
+  std::thread messageThread(
+    [&]() {
+      while (true)
+      {
+        switch (messages.take())
+        {
+          case Message::Interrupt:
+            quitting = true;
+            exitReason = ExitReason::Interrupt;
+            break;
+          case Message::Timeout:
+            quitting = true;
+            exitReason = ExitReason::Timeout;
+            break;
+          case Message::Exiting:
+            return;
+        }
+      }
+    });
 
   NTA_CHECK(domainToPlaneByModule.size() == latticeBasisByModule.size())
     << "The two arrays of matrices must be the same length (one per module) "
@@ -1467,7 +1572,7 @@ nupic::experimental::grid_uniqueness::computeGridUniquenessHypercube(
   // Use condition_variables to enable periodic logging while waiting for the
   // threads to finish.
   std::mutex stateMutex;
-  std::condition_variable finished;
+  std::condition_variable finishedCondition;
 
   size_t numThreads = std::thread::hardware_concurrency();
 
@@ -1491,12 +1596,14 @@ nupic::experimental::grid_uniqueness::computeGridUniquenessHypercube(
     std::numeric_limits<double>::max(),
 
     stateMutex,
-    finished,
+    finishedCondition,
+    false,
     0,
     vector<double>(numThreads, std::numeric_limits<double>::max()),
     vector<vector<double>>(numThreads, vector<double>(numDims)),
     vector<vector<double>>(numThreads, vector<double>(numDims)),
     vector<std::atomic<bool>>(numThreads),
+    quitting,
     vector<bool>(numThreads, true),
   };
 
@@ -1516,14 +1623,12 @@ nupic::experimental::grid_uniqueness::computeGridUniquenessHypercube(
     const auto tStart = Clock::now();
     auto tNextPrint = tStart + std::chrono::seconds(10);
 
-    bool processingQuit = false;
-
     bool printedInitialStatement = false;
 
-    while (true)
+    while (!state.finished)
     {
-      if (state.finished.wait_until(lock,
-                                    tNextPrint) == std::cv_status::timeout)
+      if (state.finishedCondition.wait_until(
+            lock, tNextPrint) == std::cv_status::timeout)
       {
         if (!printedInitialStatement)
         {
@@ -1606,30 +1711,22 @@ nupic::experimental::grid_uniqueness::computeGridUniquenessHypercube(
           }
         }
       }
-      else if (g_quitting && !processingQuit && state.numActiveThreads > 0)
-      {
-        // The condition_variable returned due to an interrupt. We still need to
-        // wait for threads to exit.
-        processingQuit = true;
-        for (size_t iThread = 0; iThread < state.threadBaselineRadius.size();
-             iThread++)
-        {
-          state.threadShouldContinue[iThread] = false;
-        }
-      }
-      else
-      {
-        break;
-      }
     }
   }
 
-  if (g_quitting)
-  {
-    NTA_THROW << "Caught interrupt signal";
-  }
+  messages.put(Message::Exiting);
+  messageThread.join();
 
-  return {state.foundPointBaselineRadius, state.pointWithGridCodeZero};
+  switch (exitReason.load())
+  {
+    case ExitReason::Timeout:
+      // Python code may check for the precise string "timeout".
+      NTA_THROW << "timeout";
+    case ExitReason::Interrupt:
+      NTA_THROW << "interrupt";
+    case ExitReason::Completed:
+      return {state.foundPointBaselineRadius, state.pointWithGridCodeZero};
+  }
 }
 
 bool tryFindGridCodeZero_noModulo(
@@ -1896,15 +1993,52 @@ nupic::experimental::grid_uniqueness::computeBinSidelength(
   const vector<vector<vector<double>>>& domainToPlaneByModule,
   double readoutResolution,
   double resultPrecision,
-  double upperBound)
+  double upperBound,
+  double timeout)
 {
-  if (g_computeBinsSideLengthCounter == 0)
+  typedef std::chrono::steady_clock Clock;
+
+  enum ExitReason {
+    Timeout,
+    Interrupt,
+    Completed
+  };
+
+  std::atomic<ExitReason> exitReason(ExitReason::Completed);
+
+  ThreadSafeQueue<Message> messages;
+  CaptureInterruptsRAII captureInterrupts(&messages);
+
+  std::atomic<bool> shouldContinue(true);
+  std::atomic<bool> interrupted(false);
+  std::thread messageThread(
+    [&]() {
+      while (true)
+      {
+        switch (messages.take())
+        {
+          case Message::Interrupt:
+            shouldContinue = false;
+            exitReason = ExitReason::Interrupt;
+            interrupted = true;
+            break;
+          case Message::Timeout:
+            shouldContinue = false;
+            exitReason = ExitReason::Timeout;
+            break;
+          case Message::Exiting:
+            return;
+        }
+      }
+    });
+
+  ScheduledTask* scheduledTask = nullptr;
+  if (timeout > 0)
   {
-    // Recover from any previous interrupts.
-    g_computeBinSidelengthShouldContinue = true;
+    scheduledTask = new ScheduledTask(
+      Clock::now() + std::chrono::duration<double>(timeout),
+      [&](){ messages.put(Message::Timeout); });
   }
-  IncrementRAII incrementCounter(&g_computeBinsSideLengthCounter);
-  CaptureInterruptsRAII captureInterrupts;
 
   double tested = 0;
   double radius = 0.5;
@@ -1912,7 +2046,7 @@ nupic::experimental::grid_uniqueness::computeBinSidelength(
   while (findGridCodeZeroAtRadius(radius,
                                   domainToPlaneByModule,
                                   readoutResolution,
-                                  g_computeBinSidelengthShouldContinue))
+                                  shouldContinue))
   {
     tested = radius;
     radius *= 2;
@@ -1930,14 +2064,14 @@ nupic::experimental::grid_uniqueness::computeBinSidelength(
   double dec = (radius - tested) / 2;
 
   // The possible error is equal to dec*2.
-  while (g_computeBinSidelengthShouldContinue && dec*2 > resultPrecision2)
+  while (shouldContinue && dec*2 > resultPrecision2)
   {
     const double testRadius = radius - dec;
 
     if (!findGridCodeZeroAtRadius(testRadius,
                                   domainToPlaneByModule,
                                   readoutResolution,
-                                  g_computeBinSidelengthShouldContinue))
+                                  shouldContinue))
     {
       radius = testRadius;
     }
@@ -1945,10 +2079,23 @@ nupic::experimental::grid_uniqueness::computeBinSidelength(
     dec /= 2;
   }
 
-  if (!g_computeBinSidelengthShouldContinue)
+  messages.put(Message::Exiting);
+  messageThread.join();
+
+  if (scheduledTask != nullptr)
   {
-    NTA_THROW << "Caught interrupt signal";
+    delete scheduledTask;
+    scheduledTask = nullptr;
   }
 
-  return 2 * radius;
+  switch (exitReason.load())
+  {
+    case ExitReason::Timeout:
+      // Python code may check for the precise string "timeout".
+      NTA_THROW << "timeout";
+    case ExitReason::Interrupt:
+      NTA_THROW << "interrupt";
+    case ExitReason::Completed:
+      return 2*radius;
+  }
 }
