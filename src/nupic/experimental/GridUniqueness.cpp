@@ -1725,6 +1725,7 @@ nupic::experimental::grid_uniqueness::computeGridUniquenessHypercube(
     case ExitReason::Interrupt:
       NTA_THROW << "interrupt";
     case ExitReason::Completed:
+    default:
       return {state.foundPointBaselineRadius, state.pointWithGridCodeZero};
   }
 }
@@ -2096,6 +2097,7 @@ nupic::experimental::grid_uniqueness::computeBinSidelength(
     case ExitReason::Interrupt:
       NTA_THROW << "interrupt";
     case ExitReason::Completed:
+    default:
       return 2*radius;
   }
 }
