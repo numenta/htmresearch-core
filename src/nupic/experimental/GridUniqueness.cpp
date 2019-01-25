@@ -86,28 +86,14 @@ private:
 class ScheduledTask {
 public:
   template <typename T, typename F>
-  ScheduledTask(T tTimeout, F f)
+  ScheduledTask(T timeout, F f)
   {
     timerThread_ = std::thread(
-      [&]()
-      {
-        std::unique_lock<std::mutex> lock(timerMutex_);
-
-        while (true)
-        {
-          if (timerCondition_.wait_until(lock, tTimeout) ==
-              std::cv_status::timeout)
-          {
-            f();
-            return;
-          }
-
-          if (timerCancelled_)
-          {
-            return;
-          }
-        }
-      });
+      // Don't use default capture [&]. It causes the addresses of the captured
+      // variables of f to get mangled, though this effect goes away when this
+      // method/constructor is inlined so it only occurs on debug builds or with
+      // __attribute__((noinline)). This occurs on clang and gcc, maybe others.
+      [this, timeout, f]() { this->waiterThread_(timeout, f); });
   }
 
   ~ScheduledTask()
@@ -122,9 +108,25 @@ public:
 
 private:
 
+  template <typename T, typename F>
+  void waiterThread_(T tTimeout, F f)
+  {
+    std::unique_lock<std::mutex> lock(this->timerMutex_);
+
+    while (!this->timerCancelled_)
+    {
+      if (this->timerCondition_.wait_until(lock, tTimeout) ==
+          std::cv_status::timeout)
+      {
+        f();
+        this->timerCancelled_ = true;
+      }
+    }
+  }
+
   std::mutex timerMutex_;
   std::condition_variable timerCondition_;
-  bool timerCancelled_ = true;
+  bool timerCancelled_ = false;
   std::thread timerThread_;
 };
 
@@ -2038,7 +2040,9 @@ nupic::experimental::grid_uniqueness::computeBinSidelength(
   {
     scheduledTask = new ScheduledTask(
       Clock::now() + std::chrono::duration<double>(timeout),
-      [&](){ messages.put(Message::Timeout); });
+      [&messages](){
+        messages.put(Message::Timeout);
+      });
   }
 
   double tested = 0;
@@ -2080,14 +2084,14 @@ nupic::experimental::grid_uniqueness::computeBinSidelength(
     dec /= 2;
   }
 
-  messages.put(Message::Exiting);
-  messageThread.join();
-
   if (scheduledTask != nullptr)
   {
     delete scheduledTask;
     scheduledTask = nullptr;
   }
+
+  messages.put(Message::Exiting);
+  messageThread.join();
 
   switch (exitReason.load())
   {
@@ -2099,5 +2103,168 @@ nupic::experimental::grid_uniqueness::computeBinSidelength(
     case ExitReason::Completed:
     default:
       return 2*radius;
+  }
+}
+
+vector<double>
+nupic::experimental::grid_uniqueness::computeBinRectangle(
+  const vector<vector<vector<double>>>& domainToPlaneByModule,
+  double readoutResolution,
+  double resultPrecision,
+  double upperBound,
+  double timeout)
+{
+  typedef std::chrono::steady_clock Clock;
+
+  enum ExitReason {
+    Timeout,
+    Interrupt,
+    Completed
+  };
+
+  std::atomic<ExitReason> exitReason(ExitReason::Completed);
+
+  ThreadSafeQueue<Message> messages;
+  CaptureInterruptsRAII captureInterrupts(&messages);
+
+  std::atomic<bool> shouldContinue(true);
+  std::atomic<bool> interrupted(false);
+  std::thread messageThread(
+    [&]() {
+      while (true)
+      {
+        switch (messages.take())
+        {
+          case Message::Interrupt:
+            shouldContinue = false;
+            exitReason = ExitReason::Interrupt;
+            interrupted = true;
+            break;
+          case Message::Timeout:
+            shouldContinue = false;
+            exitReason = ExitReason::Timeout;
+            break;
+          case Message::Exiting:
+            return;
+        }
+      }
+    });
+
+  ScheduledTask* scheduledTask = nullptr;
+  if (timeout > 0)
+  {
+    scheduledTask = new ScheduledTask(
+      Clock::now() + std::chrono::duration<double>(timeout),
+      [&messages](){ messages.put(Message::Timeout); });
+  }
+
+  const size_t numDims = domainToPlaneByModule[0][0].size();
+
+  double radius = 0.5;
+
+  while (findGridCodeZeroAtRadius(radius,
+                                  domainToPlaneByModule,
+                                  readoutResolution,
+                                  shouldContinue))
+  {
+    radius *= 2;
+
+    if (radius > upperBound)
+    {
+      return {};
+    }
+  }
+
+  // The radius needs to be twice as precise to get the sidelength sufficiently
+  // precise.
+  const double resultPrecision2 = resultPrecision / 2;
+
+  vector<double> radii(numDims, radius);
+
+  for (size_t iDim = 0; iDim < numDims; ++iDim)
+  {
+    double dec = radius / 2;
+
+    // The possible error is equal to dec*2.
+    while (shouldContinue && dec*2 > resultPrecision2)
+    {
+      const double testRadius = radii[iDim] - dec;
+
+      vector<double> x0(numDims);
+      vector<double> dims(numDims);
+
+      for (size_t iDim2 = 0; iDim2 < numDims; ++iDim2)
+      {
+        if (iDim2 == numDims - 1)
+        {
+          // Optimization: for the final dimension, don't go negative. Half of the
+          // hypercube will be equal-and-opposite phases of the other half, so we
+          // ignore the lower half of the final dimension.
+          x0[iDim2] = 0;
+          dims[iDim2] = radii[iDim2];
+        }
+        else
+        {
+          x0[iDim2] = -radii[iDim2];
+          dims[iDim2] = 2*radii[iDim2];
+        }
+      }
+
+      dims[iDim] = 0;
+
+      bool foundZero = false;
+      if (iDim != numDims - 1)
+      {
+        // Test -r
+        x0[iDim] = -testRadius;
+        foundZero = findGridCodeZero_noModulo(domainToPlaneByModule,
+                                              x0, dims, readoutResolution,
+                                              shouldContinue);
+      }
+
+      if (!foundZero)
+      {
+        // Test r
+        x0[iDim] = testRadius;;
+        foundZero = findGridCodeZero_noModulo(domainToPlaneByModule,
+                                              x0, dims, readoutResolution,
+                                              shouldContinue);;
+      }
+
+      if (!foundZero)
+      {
+        radii[iDim] = testRadius;
+      }
+      dec /= 2;
+    }
+  }
+
+  if (scheduledTask != nullptr)
+  {
+    delete scheduledTask;
+    scheduledTask = nullptr;
+  }
+
+  messages.put(Message::Exiting);
+  messageThread.join();
+
+  switch (exitReason.load())
+  {
+    case ExitReason::Timeout:
+      // Python code may check for the precise string "timeout".
+      NTA_THROW << "timeout";
+    case ExitReason::Interrupt:
+      NTA_THROW << "interrupt";
+    case ExitReason::Completed:
+    default:
+    {
+      vector<double> sidelengths(numDims);
+      for (size_t iDim = 0; iDim < numDims; ++iDim)
+      {
+        sidelengths[iDim] = radii[iDim]*2;
+      }
+
+      return sidelengths;
+    }
   }
 }

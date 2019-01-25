@@ -260,6 +260,55 @@ using namespace nupic;
   }
 }
 
+%pythoncode %{
+  def computeBinRectangle(domainToPlaneByModule, phaseResolution,
+                          resultPrecision, upperBound=1000.0, timeout=-1.0):
+    domainToPlaneByModule = numpy.asarray(domainToPlaneByModule, dtype="float64")
+
+    return _computeBinRectangle(
+      domainToPlaneByModule, phaseResolution, resultPrecision, upperBound, timeout)
+%}
+
+%inline {
+  PyObject* _computeBinRectangle(PyObject* py_domainToPlaneByModule,
+                                 Real64 readoutResolution,
+                                 Real64 resultPrecision,
+                                 Real64 upperBound,
+                                 Real64 timeout)
+  {
+    PyArrayObject* pyArr_domainToPlaneByModule =
+      (PyArrayObject*)py_domainToPlaneByModule;
+    NTA_CHECK(PyArray_NDIM(pyArr_domainToPlaneByModule) == 3);
+    npy_intp* npy_dims = PyArray_DIMS(pyArr_domainToPlaneByModule);
+
+    std::vector<std::vector<std::vector<Real64>>> domainToPlaneByModule;
+    for (size_t i = 0; i < npy_dims[0]; i++)
+    {
+      std::vector<std::vector<Real64>> module;
+      for (size_t j = 0; j < npy_dims[1]; j++)
+      {
+        std::vector<Real64> row;
+        for (size_t k = 0; k < npy_dims[2]; k++)
+        {
+          row.push_back(*(Real64*)PyArray_GETPTR3(pyArr_domainToPlaneByModule,
+                                                  i, j, k));
+        }
+        module.push_back(row);
+      }
+      domainToPlaneByModule.push_back(module);
+    }
+
+    std::vector<Real64> result =
+      nupic::experimental::grid_uniqueness::computeBinRectangle(
+        domainToPlaneByModule, readoutResolution, resultPrecision,
+        upperBound, timeout);
+
+    return nupic::NumpyVectorT<Real64>(result.size(),
+                                       result.data()).forPython();
+  }
+}
+
+
 
 #endif NTA_OS_WINDOWS
 
