@@ -1145,7 +1145,8 @@ struct GridUniquenessState {
 
   // Thread management
   std::mutex& mutex;
-  std::condition_variable& finished;
+  std::condition_variable& finishedCondition;
+  bool finished;
   size_t numActiveThreads;
   vector<double> threadBaselineRadius;
   vector<vector<double>> threadQueryX0;
@@ -1353,7 +1354,8 @@ void findGridCodeZeroThread(size_t iThread, GridUniquenessState& state)
     std::lock_guard<std::mutex> lock(state.mutex);
     if (--state.numActiveThreads == 0)
     {
-      state.finished.notify_all();
+      state.finished = true;
+      state.finishedCondition.notify_all();
     }
     state.threadRunning[iThread] = false;
   }
@@ -1570,7 +1572,7 @@ nupic::experimental::grid_uniqueness::computeGridUniquenessHypercube(
   // Use condition_variables to enable periodic logging while waiting for the
   // threads to finish.
   std::mutex stateMutex;
-  std::condition_variable finished;
+  std::condition_variable finishedCondition;
 
   size_t numThreads = std::thread::hardware_concurrency();
 
@@ -1594,7 +1596,8 @@ nupic::experimental::grid_uniqueness::computeGridUniquenessHypercube(
     std::numeric_limits<double>::max(),
 
     stateMutex,
-    finished,
+    finishedCondition,
+    false,
     0,
     vector<double>(numThreads, std::numeric_limits<double>::max()),
     vector<vector<double>>(numThreads, vector<double>(numDims)),
@@ -1620,14 +1623,12 @@ nupic::experimental::grid_uniqueness::computeGridUniquenessHypercube(
     const auto tStart = Clock::now();
     auto tNextPrint = tStart + std::chrono::seconds(10);
 
-    bool processingQuit = false;
-
     bool printedInitialStatement = false;
 
-    while (true)
+    while (!state.finished)
     {
-      if (state.finished.wait_until(lock,
-                                    tNextPrint) == std::cv_status::timeout)
+      if (state.finishedCondition.wait_until(
+            lock, tNextPrint) == std::cv_status::timeout)
       {
         if (!printedInitialStatement)
         {
@@ -1709,21 +1710,6 @@ nupic::experimental::grid_uniqueness::computeGridUniquenessHypercube(
             NTA_INFO << "  Thread " << iThread << " is finished.";
           }
         }
-      }
-      else if (quitting && !processingQuit && state.numActiveThreads > 0)
-      {
-        // The condition_variable returned due to an interrupt. We still need to
-        // wait for threads to exit.
-        processingQuit = true;
-        for (size_t iThread = 0; iThread < state.threadBaselineRadius.size();
-             iThread++)
-        {
-          state.threadShouldContinue[iThread] = false;
-        }
-      }
-      else
-      {
-        break;
       }
     }
   }
