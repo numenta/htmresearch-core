@@ -89,10 +89,6 @@ public:
   ScheduledTask(T timeout, F f)
   {
     timerThread_ = std::thread(
-      // Don't use default capture [&]. It causes the addresses of the captured
-      // variables of f to get mangled, though this effect goes away when this
-      // method/constructor is inlined so it only occurs on debug builds or with
-      // __attribute__((noinline)). This occurs on clang and gcc, maybe others.
       [this, timeout, f]() { this->waiterThread_(timeout, f); });
   }
 
@@ -1999,8 +1995,9 @@ nupic::experimental::grid_uniqueness::computeBinSidelength(
   double upperBound,
   double timeout)
 {
-  typedef std::chrono::steady_clock Clock;
-
+  //
+  // Initialization
+  //
   enum ExitReason {
     Timeout,
     Interrupt,
@@ -2013,7 +2010,6 @@ nupic::experimental::grid_uniqueness::computeBinSidelength(
   CaptureInterruptsRAII captureInterrupts(&messages);
 
   std::atomic<bool> shouldContinue(true);
-  std::atomic<bool> interrupted(false);
   std::thread messageThread(
     [&]() {
       while (true)
@@ -2023,7 +2019,6 @@ nupic::experimental::grid_uniqueness::computeBinSidelength(
           case Message::Interrupt:
             shouldContinue = false;
             exitReason = ExitReason::Interrupt;
-            interrupted = true;
             break;
           case Message::Timeout:
             shouldContinue = false;
@@ -2039,12 +2034,15 @@ nupic::experimental::grid_uniqueness::computeBinSidelength(
   if (timeout > 0)
   {
     scheduledTask = new ScheduledTask(
-      Clock::now() + std::chrono::duration<double>(timeout),
+      std::chrono::steady_clock::now() + std::chrono::duration<double>(timeout),
       [&messages](){
         messages.put(Message::Timeout);
       });
   }
 
+  //
+  // Computation
+  //
   double tested = 0;
   double radius = 0.5;
 
@@ -2084,6 +2082,9 @@ nupic::experimental::grid_uniqueness::computeBinSidelength(
     dec /= 2;
   }
 
+  //
+  // Teardown
+  //
   if (scheduledTask != nullptr)
   {
     delete scheduledTask;
@@ -2106,84 +2107,24 @@ nupic::experimental::grid_uniqueness::computeBinSidelength(
   }
 }
 
-vector<double>
-nupic::experimental::grid_uniqueness::computeBinRectangle(
+vector<double> squeezeRectangleToBin(
   const vector<vector<vector<double>>>& domainToPlaneByModule,
   double readoutResolution,
   double resultPrecision,
-  double upperBound,
-  double timeout)
+  double startingRadius,
+  std::atomic<bool>& shouldContinue)
 {
-  typedef std::chrono::steady_clock Clock;
-
-  enum ExitReason {
-    Timeout,
-    Interrupt,
-    Completed
-  };
-
-  std::atomic<ExitReason> exitReason(ExitReason::Completed);
-
-  ThreadSafeQueue<Message> messages;
-  CaptureInterruptsRAII captureInterrupts(&messages);
-
-  std::atomic<bool> shouldContinue(true);
-  std::atomic<bool> interrupted(false);
-  std::thread messageThread(
-    [&]() {
-      while (true)
-      {
-        switch (messages.take())
-        {
-          case Message::Interrupt:
-            shouldContinue = false;
-            exitReason = ExitReason::Interrupt;
-            interrupted = true;
-            break;
-          case Message::Timeout:
-            shouldContinue = false;
-            exitReason = ExitReason::Timeout;
-            break;
-          case Message::Exiting:
-            return;
-        }
-      }
-    });
-
-  ScheduledTask* scheduledTask = nullptr;
-  if (timeout > 0)
-  {
-    scheduledTask = new ScheduledTask(
-      Clock::now() + std::chrono::duration<double>(timeout),
-      [&messages](){ messages.put(Message::Timeout); });
-  }
-
   const size_t numDims = domainToPlaneByModule[0][0].size();
-
-  double radius = 0.5;
-
-  while (findGridCodeZeroAtRadius(radius,
-                                  domainToPlaneByModule,
-                                  readoutResolution,
-                                  shouldContinue))
-  {
-    radius *= 2;
-
-    if (radius > upperBound)
-    {
-      return {};
-    }
-  }
 
   // The radius needs to be twice as precise to get the sidelength sufficiently
   // precise.
   const double resultPrecision2 = resultPrecision / 2;
 
-  vector<double> radii(numDims, radius);
+  vector<double> radii(numDims, startingRadius);
 
   for (size_t iDim = 0; iDim < numDims; ++iDim)
   {
-    double dec = radius / 2;
+    double dec = startingRadius / 2;
 
     // The possible error is equal to dec*2.
     while (shouldContinue && dec*2 > resultPrecision2)
@@ -2193,26 +2134,21 @@ nupic::experimental::grid_uniqueness::computeBinRectangle(
       vector<double> x0(numDims);
       vector<double> dims(numDims);
 
-      for (size_t iDim2 = 0; iDim2 < numDims; ++iDim2)
-      {
-        if (iDim2 == numDims - 1)
-        {
-          // Optimization: for the final dimension, don't go negative. Half of the
-          // hypercube will be equal-and-opposite phases of the other half, so we
-          // ignore the lower half of the final dimension.
-          x0[iDim2] = 0;
-          dims[iDim2] = radii[iDim2];
-        }
-        else
-        {
-          x0[iDim2] = -radii[iDim2];
-          dims[iDim2] = 2*radii[iDim2];
-        }
-      }
+      std::transform(radii.begin(), radii.end() - 1, x0.begin(),
+                     [](double r) { return -r; });
+      std::transform(radii.begin(), radii.end() - 1, dims.begin(),
+                     [](double r) { return r*2; });
 
-      dims[iDim] = 0;
+      // Optimization: for the final dimension, don't go negative. Half of
+      // the hypercube will be equal-and-opposite phases of the other half,
+      // so we ignore the lower half of the final dimension.
+      x0[numDims - 1] = 0;
+      dims[numDims - 1] = radii[numDims - 1];
 
+      // Test two faces of the n-dimensional box by setting the ith dimension
+      // to -r and +r with width 0.
       bool foundZero = false;
+      dims[iDim] = 0;
       if (iDim != numDims - 1)
       {
         // Test -r
@@ -2239,6 +2175,91 @@ nupic::experimental::grid_uniqueness::computeBinRectangle(
     }
   }
 
+  return radii;
+}
+
+vector<double>
+nupic::experimental::grid_uniqueness::computeBinRectangle(
+  const vector<vector<vector<double>>>& domainToPlaneByModule,
+  double readoutResolution,
+  double resultPrecision,
+  double upperBound,
+  double timeout)
+{
+  //
+  // Initialization
+  //
+  enum ExitReason {
+    Timeout,
+    Interrupt,
+    Completed
+  };
+
+  std::atomic<ExitReason> exitReason(ExitReason::Completed);
+
+  ThreadSafeQueue<Message> messages;
+  CaptureInterruptsRAII captureInterrupts(&messages);
+
+  std::atomic<bool> shouldContinue(true);
+  std::thread messageThread(
+    [&]() {
+      while (true)
+      {
+        switch (messages.take())
+        {
+          case Message::Interrupt:
+            shouldContinue = false;
+            exitReason = ExitReason::Interrupt;
+            break;
+          case Message::Timeout:
+            shouldContinue = false;
+            exitReason = ExitReason::Timeout;
+            break;
+          case Message::Exiting:
+            return;
+        }
+      }
+    });
+
+  ScheduledTask* scheduledTask = nullptr;
+  if (timeout > 0)
+  {
+    scheduledTask = new ScheduledTask(
+      std::chrono::steady_clock::now() + std::chrono::duration<double>(timeout),
+      [&messages](){
+        messages.put(Message::Timeout);
+      });
+  }
+
+  //
+  // Computation
+  //
+  double radius = 0.5;
+
+  while (findGridCodeZeroAtRadius(radius,
+                                  domainToPlaneByModule,
+                                  readoutResolution,
+                                  shouldContinue))
+  {
+    radius *= 2;
+
+    if (radius > upperBound)
+    {
+      return {};
+    }
+  }
+
+  const vector<double> radii = squeezeRectangleToBin(
+    domainToPlaneByModule, readoutResolution, resultPrecision,
+    radius, shouldContinue);
+
+  vector<double> sidelengths(radii.size());
+  std::transform(radii.begin(), radii.end(), sidelengths.begin(),
+                 [](double r) { return 2*r; });
+
+  //
+  // Teardown
+  //
   if (scheduledTask != nullptr)
   {
     delete scheduledTask;
@@ -2257,14 +2278,6 @@ nupic::experimental::grid_uniqueness::computeBinRectangle(
       NTA_THROW << "interrupt";
     case ExitReason::Completed:
     default:
-    {
-      vector<double> sidelengths(numDims);
-      for (size_t iDim = 0; iDim < numDims; ++iDim)
-      {
-        sidelengths[iDim] = radii[iDim]*2;
-      }
-
       return sidelengths;
-    }
   }
 }
