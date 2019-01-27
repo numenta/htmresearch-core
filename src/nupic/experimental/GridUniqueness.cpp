@@ -611,9 +611,8 @@ struct LineInfo2D {
 
 bool latticePointOverlapsShadow(
   pair<double, double> latticePoint,
-  const vector<pair<double, double>>& convexHullUnshifted,
+  const vector<pair<double, double>>& convexHull,
   const vector<LineInfo2D>& lines,
-  pair<double, double> shift,
   size_t numDims,
   double rSquared)
 {
@@ -635,16 +634,10 @@ bool latticePointOverlapsShadow(
   bool leftRayCollided = false;
   bool rightRayCollided = false;
 
-  for (size_t iPoint = 0; iPoint < convexHullUnshifted.size() - 1; iPoint++)
+  for (size_t iPoint = 0; iPoint < convexHull.size() - 1; iPoint++)
   {
-    const pair<double,double> p1 = {
-      convexHullUnshifted[iPoint].first + shift.first,
-      convexHullUnshifted[iPoint].second + shift.second,
-    };
-    const pair<double,double> p2 = {
-      convexHullUnshifted[iPoint+1].first + shift.first,
-      convexHullUnshifted[iPoint+1].second + shift.second,
-    };
+    const pair<double,double>& p1 = convexHull[iPoint];
+    const pair<double,double>& p2 = convexHull[iPoint+1];
 
     if (lineSegmentIntersectsCircle2(p1, p2, latticePoint,
                                      lines[iPoint].unitVector,
@@ -965,7 +958,7 @@ bool tryProveGridCodeZeroImpossible(
   {
     // Figure out which lattice points we need to check.
     const pair<double,double> shift =
-      transformND( domainToPlaneByModule[iModule], x0);
+      transformND(domainToPlaneByModule[iModule], x0);
     const BoundingBox2D& boundingBox =
       cachedShadowBoundingBoxes[frameNumber][iModule];
     const double xmin = boundingBox.xmin + shift.first;
@@ -1007,11 +1000,13 @@ bool tryProveGridCodeZeroImpossible(
       }
       else
       {
+        latticePoint.first -= shift.first;
+        latticePoint.second -= shift.second;
         foundLatticeCollision =
           latticePointOverlapsShadow(latticePoint,
                                      cachedShadows[frameNumber][iModule],
                                      cachedShadowLines[frameNumber][iModule],
-                                     shift, numDims, rSquared);
+                                     numDims, rSquared);
       }
     }
 
@@ -1828,10 +1823,10 @@ bool tryProveGridCodeZeroImpossible_noModulo(
     const pair<double,double> shift =
       transformND(domainToPlaneByModule[iModule], x0);
 
-    if (!latticePointOverlapsShadow({0.0, 0.0},
+    if (!latticePointOverlapsShadow({-shift.first, -shift.second},
                                     cachedShadows[frameNumber][iModule],
                                     cachedShadowLines[frameNumber][iModule],
-                                    shift, numDims, rSquared))
+                                    numDims, rSquared))
     {
       // This module never gets near grid code zero for the provided range of
       // locations. So this range can't possibly contain grid code zero.
@@ -2046,40 +2041,46 @@ nupic::experimental::grid_uniqueness::computeBinSidelength(
   double tested = 0;
   double radius = 0.5;
 
-  while (findGridCodeZeroAtRadius(radius,
+  while (radius <= upperBound &&
+         findGridCodeZeroAtRadius(radius,
                                   domainToPlaneByModule,
                                   readoutResolution,
                                   shouldContinue))
   {
     tested = radius;
     radius *= 2;
-
-    if (radius > upperBound)
-    {
-      return -1.0;
-    }
   }
 
-  // The radius needs to be twice as precise to get the sidelength sufficiently
-  // precise.
-  const double resultPrecision2 = resultPrecision / 2;
-
-  double dec = (radius - tested) / 2;
-
-  // The possible error is equal to dec*2.
-  while (shouldContinue && dec*2 > resultPrecision2)
+  double result;
+  if (radius > upperBound)
   {
-    const double testRadius = radius - dec;
+    result = -1.0;
+  }
+  else
+  {
+    // The radius needs to be twice as precise to get the sidelength
+    // sufficiently precise.
+    const double resultPrecision2 = resultPrecision / 2;
 
-    if (!findGridCodeZeroAtRadius(testRadius,
-                                  domainToPlaneByModule,
-                                  readoutResolution,
-                                  shouldContinue))
+    double dec = (radius - tested) / 2;
+
+    // The possible error is equal to dec*2.
+    while (shouldContinue && dec*2 > resultPrecision2)
     {
-      radius = testRadius;
+      const double testRadius = radius - dec;
+
+      if (!findGridCodeZeroAtRadius(testRadius,
+                                    domainToPlaneByModule,
+                                    readoutResolution,
+                                    shouldContinue))
+      {
+        radius = testRadius;
+      }
+
+      dec /= 2;
     }
 
-    dec /= 2;
+    result = 2*radius;
   }
 
   //
@@ -2103,7 +2104,7 @@ nupic::experimental::grid_uniqueness::computeBinSidelength(
       NTA_THROW << "interrupt";
     case ExitReason::Completed:
     default:
-      return 2*radius;
+      return result;
   }
 }
 
@@ -2236,26 +2237,30 @@ nupic::experimental::grid_uniqueness::computeBinRectangle(
   //
   double radius = 0.5;
 
-  while (findGridCodeZeroAtRadius(radius,
+  while (radius <= upperBound &&
+         findGridCodeZeroAtRadius(radius,
                                   domainToPlaneByModule,
                                   readoutResolution,
                                   shouldContinue))
   {
     radius *= 2;
-
-    if (radius > upperBound)
-    {
-      return {};
-    }
   }
 
-  const vector<double> radii = squeezeRectangleToBin(
-    domainToPlaneByModule, readoutResolution, resultPrecision,
-    radius, shouldContinue);
+  vector<double> result;
+  if (radius > upperBound)
+  {
+    // Give up.
+  }
+  else
+  {
+    const vector<double> radii = squeezeRectangleToBin(
+      domainToPlaneByModule, readoutResolution, resultPrecision,
+      radius, shouldContinue);
 
-  vector<double> sidelengths(radii.size());
-  std::transform(radii.begin(), radii.end(), sidelengths.begin(),
-                 [](double r) { return 2*r; });
+    result.resize(radii.size());
+    std::transform(radii.begin(), radii.end(), result.begin(),
+                   [](double r) { return 2*r; });
+  }
 
   //
   // Teardown
@@ -2278,6 +2283,6 @@ nupic::experimental::grid_uniqueness::computeBinRectangle(
       NTA_THROW << "interrupt";
     case ExitReason::Completed:
     default:
-      return sidelengths;
+      return result;
   }
 }

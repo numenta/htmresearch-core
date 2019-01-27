@@ -171,7 +171,7 @@ namespace nupic {
         const std::vector<std::vector<std::vector<Real64>>>& domainToPlaneByModule,
         Real64 readoutResolution,
         Real64 resultPrecision,
-        Real64 upperBound = 1000.0,
+        Real64 upperBound = 2048.0,
         Real64 timeout = -1.0);
 
       /**
@@ -213,7 +213,7 @@ namespace nupic {
         const std::vector<std::vector<std::vector<Real64>>>& domainToPlaneByModule,
         Real64 readoutResolution,
         Real64 resultPrecision,
-        Real64 upperBound = 1000.0,
+        Real64 upperBound = 2048.0,
         Real64 timeout = -1.0);
     }
   }
