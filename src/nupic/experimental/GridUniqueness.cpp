@@ -2046,40 +2046,46 @@ nupic::experimental::grid_uniqueness::computeBinSidelength(
   double tested = 0;
   double radius = 0.5;
 
-  while (findGridCodeZeroAtRadius(radius,
+  while (radius <= upperBound &&
+         findGridCodeZeroAtRadius(radius,
                                   domainToPlaneByModule,
                                   readoutResolution,
                                   shouldContinue))
   {
     tested = radius;
     radius *= 2;
-
-    if (radius > upperBound)
-    {
-      return -1.0;
-    }
   }
 
-  // The radius needs to be twice as precise to get the sidelength sufficiently
-  // precise.
-  const double resultPrecision2 = resultPrecision / 2;
-
-  double dec = (radius - tested) / 2;
-
-  // The possible error is equal to dec*2.
-  while (shouldContinue && dec*2 > resultPrecision2)
+  double result;
+  if (radius > upperBound)
   {
-    const double testRadius = radius - dec;
+    result = -1.0;
+  }
+  else
+  {
+    // The radius needs to be twice as precise to get the sidelength
+    // sufficiently precise.
+    const double resultPrecision2 = resultPrecision / 2;
 
-    if (!findGridCodeZeroAtRadius(testRadius,
-                                  domainToPlaneByModule,
-                                  readoutResolution,
-                                  shouldContinue))
+    double dec = (radius - tested) / 2;
+
+    // The possible error is equal to dec*2.
+    while (shouldContinue && dec*2 > resultPrecision2)
     {
-      radius = testRadius;
+      const double testRadius = radius - dec;
+
+      if (!findGridCodeZeroAtRadius(testRadius,
+                                    domainToPlaneByModule,
+                                    readoutResolution,
+                                    shouldContinue))
+      {
+        radius = testRadius;
+      }
+
+      dec /= 2;
     }
 
-    dec /= 2;
+    result = 2*radius;
   }
 
   //
@@ -2103,7 +2109,7 @@ nupic::experimental::grid_uniqueness::computeBinSidelength(
       NTA_THROW << "interrupt";
     case ExitReason::Completed:
     default:
-      return 2*radius;
+      return result;
   }
 }
 
@@ -2236,26 +2242,30 @@ nupic::experimental::grid_uniqueness::computeBinRectangle(
   //
   double radius = 0.5;
 
-  while (findGridCodeZeroAtRadius(radius,
+  while (radius <= upperBound &&
+         findGridCodeZeroAtRadius(radius,
                                   domainToPlaneByModule,
                                   readoutResolution,
                                   shouldContinue))
   {
     radius *= 2;
-
-    if (radius > upperBound)
-    {
-      return {};
-    }
   }
 
-  const vector<double> radii = squeezeRectangleToBin(
-    domainToPlaneByModule, readoutResolution, resultPrecision,
-    radius, shouldContinue);
+  vector<double> result;
+  if (radius > upperBound)
+  {
+    // Give up.
+  }
+  else
+  {
+    const vector<double> radii = squeezeRectangleToBin(
+      domainToPlaneByModule, readoutResolution, resultPrecision,
+      radius, shouldContinue);
 
-  vector<double> sidelengths(radii.size());
-  std::transform(radii.begin(), radii.end(), sidelengths.begin(),
-                 [](double r) { return 2*r; });
+    result.resize(radii.size());
+    std::transform(radii.begin(), radii.end(), result.begin(),
+                   [](double r) { return 2*r; });
+  }
 
   //
   // Teardown
@@ -2278,6 +2288,6 @@ nupic::experimental::grid_uniqueness::computeBinRectangle(
       NTA_THROW << "interrupt";
     case ExitReason::Completed:
     default:
-      return sidelengths;
+      return result;
   }
 }
