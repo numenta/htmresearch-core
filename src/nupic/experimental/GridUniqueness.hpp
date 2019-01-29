@@ -121,6 +121,10 @@ namespace nupic {
        * because it contains the *actual* grid code zero. Set this to be
        * sufficiently large to get away from this actual zero.
        *
+       * @param pingInterval
+       * How often, in seconds, the function should print its current status.
+       * If <= 0, no printing will occur.
+       *
        * @return
        * - The diameter of the hypercube that contains no collisions.
        * - A point just outside this hypercube that collides with the origin.
@@ -129,7 +133,8 @@ namespace nupic {
         const std::vector<std::vector<std::vector<Real64>>>& domainToPlaneByModule,
         const std::vector<std::vector<std::vector<Real64>>>& latticeBasisByModule,
         Real64 readoutResolution,
-        Real64 ignoredCenterDiameter);
+        Real64 ignoredCenterDiameter,
+        Real64 pingInterval=10.0);
 
       /**
        * Compute the sidelength of the smallest hypercube that encloses the
