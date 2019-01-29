@@ -1477,7 +1477,8 @@ nupic::experimental::grid_uniqueness::computeGridUniquenessHypercube(
   const vector<vector<vector<double>>>& domainToPlaneByModule,
   const vector<vector<vector<double>>>& latticeBasisByModule,
   double readoutResolution,
-  double ignoredCenterDiameter)
+  double ignoredCenterDiameter,
+  double pingInterval)
 {
   typedef std::chrono::steady_clock Clock;
 
@@ -1614,93 +1615,104 @@ nupic::experimental::grid_uniqueness::computeGridUniquenessHypercube(
     }
 
     const auto tStart = Clock::now();
-    auto tNextPrint = tStart + std::chrono::seconds(10);
+    auto tNextPrint = tStart + std::chrono::duration<double>(pingInterval);
 
     bool printedInitialStatement = false;
 
     while (!state.finished)
     {
-      if (state.finishedCondition.wait_until(
-            lock, tNextPrint) == std::cv_status::timeout)
+      if (pingInterval <= 0)
       {
-        if (!printedInitialStatement)
+        state.finishedCondition.wait(lock);
+      }
+      else
+      {
+        if (state.finishedCondition.wait_until(
+              lock, tNextPrint) == std::cv_status::timeout)
         {
+          if (!printedInitialStatement)
           {
-            std::ostringstream oss;
-            oss << "[";
-
-            for (size_t iModule = 0;
-                 iModule < domainToPlaneByModule.size();
-                 iModule++)
             {
+              std::ostringstream oss;
               oss << "[";
-              oss << vecs(domainToPlaneByModule[iModule][0]) << ",";
-              oss << vecs(domainToPlaneByModule[iModule][1]);
-              oss << "],";
+
+              for (size_t iModule = 0;
+                   iModule < domainToPlaneByModule.size();
+                   iModule++)
+              {
+                oss << "[";
+                oss << vecs(domainToPlaneByModule[iModule][0]) << ",";
+                oss << vecs(domainToPlaneByModule[iModule][1]);
+                oss << "],";
+              }
+              oss << "]" << std::endl;
+              NTA_INFO << "domainToPlaneByModule:" << std::endl << oss.str();
             }
-            oss << "]" << std::endl;
-            NTA_INFO << "domainToPlaneByModule:" << std::endl << oss.str();
+
+            {
+              std::ostringstream oss;
+              oss << "[";
+              for (size_t iModule = 0;
+                   iModule < latticeBasisByModule.size();
+                   iModule++)
+              {
+                oss << "[";
+                oss << vecs(latticeBasisByModule[iModule][0]) << ",";
+                oss << vecs(latticeBasisByModule[iModule][1]);
+                oss << "],";
+              }
+              oss << "]" << std::endl;
+
+              NTA_INFO << "latticeBasisByModule:" << std::endl << oss.str();
+            }
+
+            NTA_INFO << "readout resolution: " << readoutResolution;
+
+            printedInitialStatement = true;
           }
 
-          {
-            std::ostringstream oss;
-            oss << "[";
-            for (size_t iModule = 0;
-                 iModule < latticeBasisByModule.size();
-                 iModule++)
-            {
-              oss << "[";
-              oss << vecs(latticeBasisByModule[iModule][0]) << ",";
-              oss << vecs(latticeBasisByModule[iModule][1]);
-              oss << "],";
-            }
-            oss << "]" << std::endl;
+          NTA_INFO << "";
+          NTA_INFO << domainToPlaneByModule.size() << " modules, " << numDims
+                   << " dimensions, "
+                   << std::chrono::duration_cast<std::chrono::seconds>(
+                     Clock::now() - tStart).count() << " seconds elapsed";
 
-            NTA_INFO << "latticeBasisByModule:" << std::endl << oss.str();
+          if (state.foundPointBaselineRadius <
+              std::numeric_limits<double>::max())
+          {
+            NTA_INFO << "**Hypercube side length upper bound: "
+                     << state.foundPointBaselineRadius << "**";
+            NTA_INFO << "**Grid code zero found at: "
+                     << vecs(state.pointWithGridCodeZero) << "**";
           }
 
-          NTA_INFO << "readout resolution: " << readoutResolution;
+          tNextPrint = (Clock::now() +
+                        std::chrono::duration<double>(pingInterval));
 
-          printedInitialStatement = true;
-        }
-
-        NTA_INFO << "";
-        NTA_INFO << domainToPlaneByModule.size() << " modules, " << numDims
-                 << " dimensions, "
-                 << std::chrono::duration_cast<std::chrono::seconds>(
-                   Clock::now() - tStart).count() << " seconds elapsed";
-
-        if (state.foundPointBaselineRadius < std::numeric_limits<double>::max())
-        {
-          NTA_INFO << "**Hypercube side length upper bound: "
-                   << state.foundPointBaselineRadius << "**";
-          NTA_INFO << "**Grid code zero found at: "
-                   << vecs(state.pointWithGridCodeZero) << "**";
-        }
-
-        tNextPrint = Clock::now() + std::chrono::seconds(10);
-
-        for (size_t iThread = 0; iThread < state.threadBaselineRadius.size();
-             iThread++)
-        {
-          if (state.threadRunning[iThread])
+          for (size_t iThread = 0; iThread < state.threadBaselineRadius.size();
+               iThread++)
           {
-            if (state.threadShouldContinue[iThread])
+            if (state.threadRunning[iThread])
             {
-              NTA_INFO << "  Thread " << iThread
-                       << " assuming hypercube side length lower bound "
-                       << state.threadBaselineRadius[iThread] << ", querying x0 "
-                       << vecs(state.threadQueryX0[iThread]) << " and dims "
-                       << vecs(state.threadQueryDims[iThread]);
+              if (state.threadShouldContinue[iThread])
+              {
+                NTA_INFO << "  Thread " << iThread
+                         << " assuming hypercube side length lower bound "
+                         << state.threadBaselineRadius[iThread]
+                         << ", querying x0 "
+                         << vecs(state.threadQueryX0[iThread]) << " and dims "
+                         << vecs(state.threadQueryDims[iThread]);
+              }
+              else
+              {
+                NTA_INFO << "  Thread " << iThread
+                         << " has been ordered to stop.";
+              }
             }
             else
             {
-              NTA_INFO << "  Thread " << iThread << " has been ordered to stop.";
+              NTA_INFO << "  Thread " << iThread << " is finished.";
             }
-          }
-          else
-          {
-            NTA_INFO << "  Thread " << iThread << " is finished.";
           }
         }
       }

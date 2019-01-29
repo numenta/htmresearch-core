@@ -138,20 +138,22 @@ using namespace nupic;
 
 %pythoncode %{
   def computeGridUniquenessHypercube(domainToPlaneByModule, latticeBasisByModule,
-                                     phaseResolution, ignoredCenterDiameter):
+                                     phaseResolution, ignoredCenterDiameter,
+                                     pingInterval=10.0):
     domainToPlaneByModule = numpy.asarray(domainToPlaneByModule, dtype="float64")
     latticeBasisByModule = numpy.asarray(latticeBasisByModule, dtype="float64")
 
     return _computeGridUniquenessHypercube(
       domainToPlaneByModule, latticeBasisByModule, phaseResolution,
-      ignoredCenterDiameter)
+      ignoredCenterDiameter, pingInterval)
 %}
 
 %inline {
   PyObject* _computeGridUniquenessHypercube(PyObject* py_domainToPlaneByModule,
                                             PyObject* py_latticeBasisByModule,
                                             Real64 phaseResolution,
-                                            Real64 ignoredCenterDiameter)
+                                            Real64 ignoredCenterDiameter,
+                                            Real64 pingInterval)
   {
     PyArrayObject* pyArr_domainToPlaneByModule =
       (PyArrayObject*)py_domainToPlaneByModule;
@@ -200,7 +202,7 @@ using namespace nupic;
     std::pair<Real64,std::vector<Real64>> result =
       nupic::experimental::grid_uniqueness::computeGridUniquenessHypercube(
         domainToPlaneByModule, latticeBasisByModule, phaseResolution,
-        ignoredCenterDiameter);
+        ignoredCenterDiameter, pingInterval);
 
     PyObject* pyResult = PyTuple_New(2);
     PyTuple_SetItem(pyResult, 0, PyFloat_FromDouble(result.first));
