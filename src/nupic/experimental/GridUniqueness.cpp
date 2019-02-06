@@ -37,6 +37,7 @@
 #include <condition_variable>
 #include <limits>
 #include <mutex>
+#include <numeric>
 #include <string>
 #include <thread>
 #include <vector>
@@ -609,88 +610,141 @@ struct LineInfo2D {
   double length;
 };
 
+struct HalfPlaneData
+{
+  pair<double,double> normalVector;
+  double top;
+};
+
+struct PolygonData {
+  bool isValidPolygon;
+  pair<double,double> centroid;
+  vector<pair<double,double>> points;
+  vector<double> thetaByPoint;
+  vector<HalfPlaneData> halfPlaneByEndpoint;
+  vector<LineInfo2D> lineInfoByEndpoint;
+};
+
+/**
+ * Computing theta can be expensive. Get a number that increases monotonically
+ * with theta.
+ */
+double getThetaIndex(double dx, double dy)
+{
+  // // Simple slow version.
+  // double theta = atan2(dy, dx);
+  // if (theta < 0)
+  // {
+  //   theta += 2*M_PI;
+  // }
+  // return theta;
+
+  // Faster version.
+  const bool dxSign = dx >= 0;
+  const bool dySign = dy >= 0;
+
+  if (dxSign && dySign)
+  {
+    if (dy < dx)
+    {
+      return dy / dx;
+    }
+    else
+    {
+      return 2.0 - (dx / dy);
+    }
+  }
+  else if (!dxSign && dySign)
+  {
+    dx = abs(dx);
+    if (dy > dx)
+    {
+      return 2.0 + (dx / dy);
+    }
+    else
+    {
+      return 4.0 - (dy / dx);
+    }
+  }
+  else if (!dxSign && !dySign)
+  {
+    dx = abs(dx);
+    dy = abs(dy);
+    if (dy < dx)
+    {
+      return 4.0 + (dy / dx);
+    }
+    else
+    {
+      return 6.0 - (dx / dy);
+    }
+  }
+  else
+  {
+    dy = abs(dy);
+    if (dy > dx)
+    {
+      return 6.0 + (dx / dy);
+    }
+    else
+    {
+      return 8.0 - (dy / dx);
+    }
+  }
+}
+
 bool latticePointOverlapsShadow(
   pair<double, double> latticePoint,
-  const vector<pair<double, double>>& convexHull,
-  const vector<LineInfo2D>& lines,
+  const PolygonData& shadow,
   size_t numDims,
   double rSquared)
 {
-  bool foundLatticeCollision = false;
-
-  // If the circle around a lattice point overlaps the 2D shadow of this box,
-  // then one of the following is true:
-  //   A. It intersects one of the edges.
-  //   B. It is totally contained within the shadow. (not possible in 1D)
-  //
-  // To detect possibility A, we check the distance between the lattice point
-  // and each edge. If it's within the radius of the circle, then the two
-  // intersect.
-  //
-  // To detect possibility B, we extend two rays leftward and rightward from the
-  // lattice point. If both rays intersect an edge, then the lattice point is
-  // contained within the shadow.
-
-  bool leftRayCollided = false;
-  bool rightRayCollided = false;
-
-  for (size_t iPoint = 0; iPoint < convexHull.size() - 1; iPoint++)
+  const pair<double,double> *p1;
+  const pair<double,double> *p2;
+  const LineInfo2D *lineInfo;
+  if (shadow.isValidPolygon)
   {
-    const pair<double,double>& p1 = convexHull[iPoint];
-    const pair<double,double>& p2 = convexHull[iPoint+1];
+    // Figure out which edge to check.
+    const double thetaIndex = getThetaIndex(latticePoint.first - shadow.centroid.first,
+                                            latticePoint.second - shadow.centroid.second);
 
-    if (lineSegmentIntersectsCircle2(p1, p2, latticePoint,
-                                     lines[iPoint].unitVector,
-                                     lines[iPoint].length, rSquared))
+    // If we reached the end, set i back to 0.
+    const size_t iEnd = std::distance(
+      shadow.thetaByPoint.begin(),
+      std::lower_bound(shadow.thetaByPoint.begin(),
+                       shadow.thetaByPoint.end(),
+                       thetaIndex)) % shadow.thetaByPoint.size();
+
+    // Check whether the lattice point is contained within the shadow.
+    const pair<double,double>& normalVector =
+      shadow.halfPlaneByEndpoint[iEnd].normalVector;
+    if (normalVector.first*latticePoint.first +
+        normalVector.second*latticePoint.second
+        <= shadow.halfPlaneByEndpoint[iEnd].top)
     {
-      foundLatticeCollision = true;
-      break;
+      // The point is contained.
+      return true;
     }
 
-    if (p1.second == p2.second)
-    {
-      // Special logic to avoid dividing by zero.
-      if (p1.second == latticePoint.second)
-      {
-        // The ray passes straight through the edge.
-        if (p1.first < latticePoint.first)
-        {
-          leftRayCollided = true;
-        }
-        else
-        {
-          rightRayCollided = true;
-        }
-      }
-    }
-    else if ((p1.second < latticePoint.second &&
-              latticePoint.second < p2.second) ||
-             (p2.second < latticePoint.second &&
-              latticePoint.second < p1.second))
-    {
-      // Determine the point where it crosses.
-      const double xCross = p1.first +
-        (p2.first - p1.first) * ((latticePoint.second - p1.second) /
-                                 (p2.second - p1.second));
-
-      if (xCross < latticePoint.first)
-      {
-        leftRayCollided = true;
-      }
-      else
-      {
-        rightRayCollided = true;
-      }
-    }
-
-    if (leftRayCollided && rightRayCollided)
-    {
-      foundLatticeCollision = true;
-      break;
-    }
+    // Proceed to check whether the circle around the lattice point intersects
+    // with this edge.
+    p1 = (iEnd == 0)
+      ? &shadow.points[shadow.points.size() - 1]
+      : &shadow.points[iEnd - 1];
+    p2 = &shadow.points[iEnd];
+    lineInfo = &shadow.lineInfoByEndpoint[iEnd];
+  }
+  else
+  {
+    p1 = &shadow.points[1];
+    p2 = &shadow.points[0];
+    lineInfo = &shadow.lineInfoByEndpoint[0];
   }
 
-  return foundLatticeCollision;
+  return lineSegmentIntersectsCircle2(*p1, *p2, latticePoint,
+                                      lineInfo->unitVector,
+                                      lineInfo->length,
+                                      rSquared);
 }
 
 vector<pair<double,double>> getShadowConvexHull(
@@ -824,18 +878,20 @@ BoundingBox2D computeBoundingBox(const vector<pair<double,double>>& shadow)
   return boundingBox;
 }
 
-vector<LineInfo2D> computeShadowLines(const vector<pair<double,double>>& shadow)
+vector<LineInfo2D> computeShadowLines(const vector<pair<double,double>>& points)
 {
   vector<LineInfo2D> lines;
-  lines.reserve(shadow.size() - 1);
+  lines.reserve(points.size());
 
-  for (size_t iPoint = 0; iPoint < shadow.size() - 1; iPoint++)
+  for (size_t iEnd = 0; iEnd < points.size(); ++iEnd)
   {
-    const pair<double,double> start = shadow[iPoint];
-    const pair<double,double> end = shadow[iPoint+1];
+    const pair<double,double>& p1 = (iEnd == 0)
+      ? points[points.size() - 1]
+      : points[iEnd - 1];
+    const pair<double,double>& p2 = points[iEnd];
 
-    pair<double,double> unitVector = {end.first - start.first,
-                                      end.second - start.second};
+    pair<double,double> unitVector = {p2.first - p1.first,
+                                      p2.second - p1.second};
     const double lineLength = sqrt(pow(unitVector.first, 2) +
                                    pow(unitVector.second, 2));
     unitVector.first /= lineLength;
@@ -845,6 +901,141 @@ vector<LineInfo2D> computeShadowLines(const vector<pair<double,double>>& shadow)
   }
 
   return lines;
+}
+
+PolygonData computePolygonData(const vector<pair<double, double>>& shadow)
+{
+  // Compute the polygon's area times two.
+  double acc = 0;
+  for (size_t iStart = 0; iStart < shadow.size() - 1; ++iStart)
+  {
+    const pair<double,double>& p1 = shadow[iStart];
+    const pair<double,double>& p2 = shadow[iStart + 1];
+
+    acc += p1.first * p2.second;
+    acc -= p2.first * p1.second;
+  }
+
+  const bool isValidPolygon = (acc != 0);
+
+  if (isValidPolygon)
+  {
+    // Make a copy that doesn't have the duplicate at the end.
+    vector<pair<double,double>> points(shadow.begin(),
+                                       shadow.end() - 1);
+
+    // Compute centroid.
+    double xsum = 0;
+    double ysum = 0;
+    for (const pair<double,double>& p : points)
+    {
+      xsum += p.first;
+      ysum += p.second;
+    }
+    const pair<double,double> centroid = {xsum / points.size(),
+                                          ysum / points.size()};
+
+    // Compute thetas.
+    vector<double> thetas;
+    thetas.reserve(points.size());
+    for (const pair<double,double>& p : points)
+    {
+      thetas.push_back(getThetaIndex(p.first - centroid.first,
+                                     p.second - centroid.second));
+    }
+
+    // Sort by theta.
+    {
+      vector<size_t> indices(points.size());
+      std::iota(indices.begin(), indices.end(), 0);
+      std::sort(indices.begin(), indices.end(),
+                [&](size_t a, size_t b) {
+                  return thetas[a] < thetas[b];
+                });
+      vector<pair<double,double>> pointsSorted;
+      pointsSorted.reserve(points.size());
+      vector<double> thetasSorted;
+      thetasSorted.reserve(points.size());
+      for (size_t idx : indices)
+      {
+        pointsSorted.push_back(points[idx]);
+        thetasSorted.push_back(thetas[idx]);
+      }
+      points = std::move(pointsSorted);
+      thetas = std::move(thetasSorted);
+    }
+
+    // Compute half planes.
+    vector<HalfPlaneData> halfPlanes;
+    halfPlanes.reserve(points.size());
+    for (size_t i = 0; i < points.size(); ++i)
+    {
+      const pair<double,double>& p1 = (i == 0)
+        ? points[points.size() - 1]
+        : points[i - 1];
+      const pair<double,double>& p2 = points[i];
+      const pair<double,double> normalVector = {p2.second - p1.second,
+                                                -(p2.first - p1.first)};
+      const double top = (normalVector.first*p1.first +
+                          normalVector.second*p1.second);
+      halfPlanes.push_back({normalVector, top});
+    }
+
+    return {
+      isValidPolygon,
+      centroid,
+      points,
+      thetas,
+      halfPlanes,
+      computeShadowLines(points),
+    };
+  }
+  else
+  {
+    bool useX = false;
+    for (size_t iStart = 0; iStart < shadow.size() - 1; ++iStart)
+    {
+      if (shadow[iStart].first != shadow[iStart+1].first)
+      {
+        useX = true;
+        break;
+      }
+    }
+
+    vector<pair<double,double>> points;
+    points.reserve(2);
+    if (useX)
+    {
+      auto compare =
+        [](const pair<double,double>& a, const pair<double,double>& b)
+        {
+          return a.first < b.first;
+        };
+
+      points.push_back(*std::min_element(shadow.begin(), shadow.end(), compare));
+      points.push_back(*std::max_element(shadow.begin(), shadow.end(), compare));
+    }
+    else
+    {
+      auto compare =
+        [](const pair<double,double>& a, const pair<double,double>& b)
+        {
+          return a.second < b.second;
+        };
+
+      points.push_back(*std::min_element(shadow.begin(), shadow.end(), compare));
+      points.push_back(*std::max_element(shadow.begin(), shadow.end(), compare));
+    }
+
+    return {
+      isValidPolygon,
+      {INFINITY,INFINITY},
+      points,
+      {},
+      {},
+      computeShadowLines(points),
+    };
+  }
 }
 
 LatticeBox computeLatticeBox(
@@ -893,8 +1084,7 @@ bool tryProveGridCodeZeroImpossible(
   double r,
   double rSquared,
   double vertexBuffer[],
-  vector<vector<vector<pair<double,double>>>>& cachedShadows,
-  vector<vector<vector<LineInfo2D>>>& cachedShadowLines,
+  vector<vector<PolygonData>>& cachedShadows,
   vector<vector<BoundingBox2D>>& cachedShadowBoundingBoxes,
   vector<vector<LatticeBox>>& cachedLatticeBoxes,
   size_t frameNumber)
@@ -910,7 +1100,7 @@ bool tryProveGridCodeZeroImpossible(
 
   if (frameNumber == cachedShadowBoundingBoxes.size())
   {
-    vector<vector<pair<double,double>>> shadowByModule;
+    vector<PolygonData> shadowByModule;
     shadowByModule.reserve(domainToPlaneByModule.size());
 
     vector<BoundingBox2D> boundingBoxByModule;
@@ -918,9 +1108,6 @@ bool tryProveGridCodeZeroImpossible(
 
     vector<LatticeBox> latticeBoxByModule;
     latticeBoxByModule.reserve(domainToPlaneByModule.size());
-
-    vector<vector<LineInfo2D>> linesByModule;
-    linesByModule.reserve(domainToPlaneByModule.size());
 
     for (size_t iModule = 0; iModule < domainToPlaneByModule.size(); iModule++)
     {
@@ -939,19 +1126,16 @@ bool tryProveGridCodeZeroImpossible(
           boundingBox.ymax - boundingBox.ymin > shadowWidthThreshold)
       {
         shadowByModule.push_back({});
-        linesByModule.push_back({});
       }
       else
       {
-        shadowByModule.push_back(shadow);
-        linesByModule.push_back(computeShadowLines(shadow));
+        shadowByModule.push_back(computePolygonData(shadow));
       }
     }
 
     cachedShadows.push_back(shadowByModule);
     cachedShadowBoundingBoxes.push_back(boundingBoxByModule);
     cachedLatticeBoxes.push_back(latticeBoxByModule);
-    cachedShadowLines.push_back(linesByModule);
   }
 
   for (size_t iModule = 0; iModule < domainToPlaneByModule.size(); iModule++)
@@ -1005,7 +1189,6 @@ bool tryProveGridCodeZeroImpossible(
         foundLatticeCollision =
           latticePointOverlapsShadow(latticePoint,
                                      cachedShadows[frameNumber][iModule],
-                                     cachedShadowLines[frameNumber][iModule],
                                      numDims, rSquared);
       }
     }
@@ -1058,8 +1241,7 @@ bool findGridCodeZeroHelper(
   double rSquaredPositive,
   double rSquaredNegative,
   double vertexBuffer[],
-  vector<vector<vector<pair<double,double>>>>& cachedShadows,
-  vector<vector<vector<LineInfo2D>>>& cachedShadowLines,
+  vector<vector<PolygonData>>& cachedShadows,
   vector<vector<BoundingBox2D>>& cachedShadowBoundingBoxes,
   vector<vector<LatticeBox>>& cachedLatticeBoxes,
   size_t frameNumber,
@@ -1074,10 +1256,8 @@ bool findGridCodeZeroHelper(
                                      latticeBasisByModule,
                                      inverseLatticeBasisByModule, numDims, x0,
                                      dims, r, rSquaredNegative, vertexBuffer,
-                                     cachedShadows, cachedShadowLines,
-                                     cachedShadowBoundingBoxes,
-                                     cachedLatticeBoxes,
-                                     frameNumber))
+                                     cachedShadows, cachedShadowBoundingBoxes,
+                                     cachedLatticeBoxes, frameNumber))
   {
     return false;
   }
@@ -1096,9 +1276,9 @@ bool findGridCodeZeroHelper(
     if (findGridCodeZeroHelper(
           domainToPlaneByModule, latticeBasisByModule,
           inverseLatticeBasisByModule, numDims, x0, dims, r, rSquaredPositive,
-          rSquaredNegative, vertexBuffer, cachedShadows, cachedShadowLines,
-          cachedShadowBoundingBoxes, cachedLatticeBoxes,
-          frameNumber + 1, shouldContinue))
+          rSquaredNegative, vertexBuffer, cachedShadows,
+          cachedShadowBoundingBoxes, cachedLatticeBoxes, frameNumber + 1,
+          shouldContinue))
     {
       return true;
     }
@@ -1108,9 +1288,9 @@ bool findGridCodeZeroHelper(
       return findGridCodeZeroHelper(
         domainToPlaneByModule, latticeBasisByModule,
         inverseLatticeBasisByModule, numDims, x0, dims, r, rSquaredPositive,
-        rSquaredNegative, vertexBuffer, cachedShadows, cachedShadowLines,
-        cachedShadowBoundingBoxes, cachedLatticeBoxes,
-        frameNumber + 1, shouldContinue);
+        rSquaredNegative, vertexBuffer, cachedShadows,
+        cachedShadowBoundingBoxes, cachedLatticeBoxes, frameNumber + 1,
+        shouldContinue);
     }
   }
 }
@@ -1287,8 +1467,7 @@ void findGridCodeZeroThread(size_t iThread, GridUniquenessState& state)
 
     // Perform the task.
 
-    vector<vector<vector<pair<double,double>>>> cachedShadows;
-    vector<vector<vector<LineInfo2D>>> cachedShadowLines;
+    vector<vector<PolygonData>> cachedShadows;
     vector<vector<BoundingBox2D>> cachedShadowBoundingBoxes;
     vector<vector<LatticeBox>> cachedLatticeBoxes;
 
@@ -1324,7 +1503,7 @@ void findGridCodeZeroThread(size_t iThread, GridUniquenessState& state)
         state.inverseLatticeBasisByModule, state.numDims, x0.data(),
         dims.data(), state.readoutResolution/2, rSquaredPositive,
         rSquaredNegative, pointWithGridCodeZero.data(), cachedShadows,
-        cachedShadowLines, cachedShadowBoundingBoxes, cachedLatticeBoxes, 0,
+        cachedShadowBoundingBoxes, cachedLatticeBoxes, 0,
         state.threadShouldContinue[iThread]);
 
       if (foundGridCodeZero) break;
@@ -1450,8 +1629,7 @@ bool nupic::experimental::grid_uniqueness::findGridCodeZero(
     inverseLatticeBasisByModule.push_back(invert2DMatrix(latticeBasis));
   }
 
-  vector<vector<vector<pair<double,double>>>> cachedShadows;
-  vector<vector<vector<LineInfo2D>>> cachedShadowLines;
+  vector<vector<PolygonData>> cachedShadows;
   vector<vector<BoundingBox2D>> cachedShadowBoundingBoxes;
   vector<vector<LatticeBox>> cachedLatticeBoxes;
 
@@ -1468,8 +1646,8 @@ bool nupic::experimental::grid_uniqueness::findGridCodeZero(
     domainToPlaneByModule2, latticeBasisByModule3, inverseLatticeBasisByModule,
     dimsCopy.size(), x0Copy.data(), dimsCopy.data(), readoutResolution/2,
     rSquaredPositive, rSquaredNegative, pointWithGridCodeZero->data(),
-    cachedShadows, cachedShadowLines, cachedShadowBoundingBoxes,
-    cachedLatticeBoxes, 0, shouldContinue);
+    cachedShadows, cachedShadowBoundingBoxes, cachedLatticeBoxes, 0,
+    shouldContinue);
 }
 
 pair<double,vector<double>>
@@ -1798,8 +1976,7 @@ bool tryProveGridCodeZeroImpossible_noModulo(
   double r,
   double rSquared,
   double vertexBuffer[],
-  vector<vector<vector<pair<double,double>>>>& cachedShadows,
-  vector<vector<vector<LineInfo2D>>>& cachedShadowLines,
+  vector<vector<PolygonData>>& cachedShadows,
   size_t frameNumber)
 {
   if (numDims == 1)
@@ -1812,22 +1989,17 @@ bool tryProveGridCodeZeroImpossible_noModulo(
 
   if (frameNumber == cachedShadows.size())
   {
-    vector<vector<pair<double,double>>> shadowByModule;
+    vector<PolygonData> shadowByModule;
     shadowByModule.reserve(domainToPlaneByModule.size());
-
-    vector<vector<LineInfo2D>> linesByModule;
-    linesByModule.reserve(domainToPlaneByModule.size());
 
     for (size_t iModule = 0; iModule < domainToPlaneByModule.size(); iModule++)
     {
       const vector<pair<double, double>> shadow = getShadowConvexHull(
         domainToPlaneByModule[iModule], numDims, dims, vertexBuffer);
-      shadowByModule.push_back(shadow);
-      linesByModule.push_back(computeShadowLines(shadow));
+      shadowByModule.push_back(computePolygonData(shadow));
     }
 
     cachedShadows.push_back(shadowByModule);
-    cachedShadowLines.push_back(linesByModule);
   }
 
   for (size_t iModule = 0; iModule < domainToPlaneByModule.size(); iModule++)
@@ -1837,7 +2009,6 @@ bool tryProveGridCodeZeroImpossible_noModulo(
 
     if (!latticePointOverlapsShadow({-shift.first, -shift.second},
                                     cachedShadows[frameNumber][iModule],
-                                    cachedShadowLines[frameNumber][iModule],
                                     numDims, rSquared))
     {
       // This module never gets near grid code zero for the provided range of
@@ -1858,8 +2029,7 @@ bool findGridCodeZeroHelper_noModulo(
   double rSquaredPositive,
   double rSquaredNegative,
   double vertexBuffer[],
-  vector<vector<vector<pair<double,double>>>>& cachedShadows,
-  vector<vector<vector<LineInfo2D>>>& cachedShadowLines,
+  vector<vector<PolygonData>>& cachedShadows,
   size_t frameNumber,
   std::atomic<bool>& shouldContinue)
 {
@@ -1870,7 +2040,7 @@ bool findGridCodeZeroHelper_noModulo(
 
   if (tryProveGridCodeZeroImpossible_noModulo(
         domainToPlaneByModule, numDims, x0, dims, r, rSquaredNegative,
-        vertexBuffer, cachedShadows, cachedShadowLines, frameNumber))
+        vertexBuffer, cachedShadows, frameNumber))
   {
     return false;
   }
@@ -1887,8 +2057,8 @@ bool findGridCodeZeroHelper_noModulo(
     SwapValueRAII swap1(&dims[iWidestDim], dims[iWidestDim] / 2);
     if (findGridCodeZeroHelper_noModulo(
           domainToPlaneByModule, numDims, x0, dims, r, rSquaredPositive,
-          rSquaredNegative, vertexBuffer, cachedShadows, cachedShadowLines,
-          frameNumber + 1, shouldContinue))
+          rSquaredNegative, vertexBuffer, cachedShadows, frameNumber + 1,
+          shouldContinue))
     {
       return true;
     }
@@ -1897,8 +2067,8 @@ bool findGridCodeZeroHelper_noModulo(
       SwapValueRAII swap2(&x0[iWidestDim], x0[iWidestDim] + dims[iWidestDim]);
       return findGridCodeZeroHelper_noModulo(
         domainToPlaneByModule, numDims, x0, dims, r, rSquaredPositive,
-        rSquaredNegative, vertexBuffer, cachedShadows, cachedShadowLines,
-        frameNumber + 1, shouldContinue);
+        rSquaredNegative, vertexBuffer, cachedShadows, frameNumber + 1,
+        shouldContinue);
     }
   }
 }
@@ -1929,8 +2099,7 @@ bool findGridCodeZero_noModulo(
 
   NTA_ASSERT(domainToPlaneByModule[0].size() == 2);
 
-  vector<vector<vector<pair<double,double>>>> cachedShadows;
-  vector<vector<vector<LineInfo2D>>> cachedShadowLines;
+  vector<vector<PolygonData>> cachedShadows;
 
   // Add a small epsilon to handle situations where floating point math causes a
   // vertex to be non-zero-overlapping here and zero-overlapping in
@@ -1944,8 +2113,7 @@ bool findGridCodeZero_noModulo(
   return findGridCodeZeroHelper_noModulo(
     domainToPlaneByModule, dimsCopy.size(), x0Copy.data(), dimsCopy.data(),
     readoutResolution/2, rSquaredPositive, rSquaredNegative,
-    pointWithGridCodeZero->data(), cachedShadows, cachedShadowLines, 0,
-    shouldContinue);
+    pointWithGridCodeZero->data(), cachedShadows, 0, shouldContinue);
 }
 
 bool findGridCodeZeroAtRadius(
