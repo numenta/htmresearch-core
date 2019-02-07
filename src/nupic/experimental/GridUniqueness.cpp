@@ -655,7 +655,7 @@ double getThetaIndex(double dx, double dy)
   }
   else if (!dxSign && dySign)
   {
-    dx = abs(dx);
+    dx = std::abs(dx);
     if (dy > dx)
     {
       return 2.0 + (dx / dy);
@@ -667,8 +667,8 @@ double getThetaIndex(double dx, double dy)
   }
   else if (!dxSign && !dySign)
   {
-    dx = abs(dx);
-    dy = abs(dy);
+    dx = std::abs(dx);
+    dy = std::abs(dy);
     if (dy < dx)
     {
       return 4.0 + (dy / dx);
@@ -680,7 +680,7 @@ double getThetaIndex(double dx, double dy)
   }
   else
   {
-    dy = abs(dy);
+    dy = std::abs(dy);
     if (dy > dx)
     {
       return 6.0 + (dx / dy);
