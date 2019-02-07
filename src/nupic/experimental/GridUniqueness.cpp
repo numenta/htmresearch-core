@@ -557,12 +557,11 @@ bool tryFindGridCodeZero(
   return true;
 }
 
-bool lineSegmentIntersectsCircle2(pair<double, double> start,
-                                  pair<double, double> end,
-                                  pair<double, double> center,
-                                  pair<double, double> unitVector,
-                                  double lineLength,
-                                  double rSquared)
+double circleDistanceFromLineSegmentSquared(pair<double, double> start,
+                                            pair<double, double> end,
+                                            pair<double, double> center,
+                                            pair<double, double> unitVector,
+                                            double lineLength)
 {
   const double centerDistanceAlongLine =
     (unitVector.first*(center.first - start.first) +
@@ -586,7 +585,7 @@ bool lineSegmentIntersectsCircle2(pair<double, double> start,
   }
 
   return (pow(center.first - nearestPointOnLine.first, 2) +
-          pow(center.second - nearestPointOnLine.second, 2) <= rSquared);
+          pow(center.second - nearestPointOnLine.second, 2));
 }
 
 bool lineSegmentIntersectsCircle(pair<double, double> start,
@@ -601,8 +600,8 @@ bool lineSegmentIntersectsCircle(pair<double, double> start,
   unitVector.first /= lineLength;
   unitVector.second /= lineLength;
 
-  return lineSegmentIntersectsCircle2(start, end, center, unitVector, lineLength,
-                                      rSquared);
+  return circleDistanceFromLineSegmentSquared(start, end, center, unitVector,
+                                              lineLength) <= rSquared;
 }
 
 struct LineInfo2D {
@@ -693,11 +692,10 @@ double getThetaIndex(double dx, double dy)
   }
 }
 
-bool latticePointOverlapsShadow(
-  pair<double, double> latticePoint,
+double pointDistanceFromShadowSquared(
+  pair<double, double> point,
   const PolygonData& shadow,
-  size_t numDims,
-  double rSquared)
+  size_t numDims)
 {
   const pair<double,double> *p1;
   const pair<double,double> *p2;
@@ -705,25 +703,31 @@ bool latticePointOverlapsShadow(
   if (shadow.isValidPolygon)
   {
     // Figure out which edge to check.
-    const double thetaIndex = getThetaIndex(latticePoint.first - shadow.centroid.first,
-                                            latticePoint.second - shadow.centroid.second);
+    const double thetaIndex = getThetaIndex(point.first - shadow.centroid.first,
+                                            point.second - shadow.centroid.second);
+
+    const vector<double>::const_iterator it = (shadow.points.size() <= 8)
+      ? std::find_if(shadow.thetaByPoint.begin(), shadow.thetaByPoint.end(),
+                     [&](double d)
+                     {
+                       return thetaIndex < d;
+                     })
+      : std::lower_bound(shadow.thetaByPoint.begin(), shadow.thetaByPoint.end(),
+                         thetaIndex);
 
     // If we reached the end, set i back to 0.
-    const size_t iEnd = std::distance(
-      shadow.thetaByPoint.begin(),
-      std::lower_bound(shadow.thetaByPoint.begin(),
-                       shadow.thetaByPoint.end(),
-                       thetaIndex)) % shadow.thetaByPoint.size();
+    const size_t iEnd = std::distance(shadow.thetaByPoint.begin(),
+                                      it) % shadow.thetaByPoint.size();
 
     // Check whether the lattice point is contained within the shadow.
     const pair<double,double>& normalVector =
       shadow.halfPlaneByEndpoint[iEnd].normalVector;
-    if (normalVector.first*latticePoint.first +
-        normalVector.second*latticePoint.second
+    if (normalVector.first*point.first +
+        normalVector.second*point.second
         <= shadow.halfPlaneByEndpoint[iEnd].top)
     {
       // The point is contained.
-      return true;
+      return 0.0;
     }
 
     // Proceed to check whether the circle around the lattice point intersects
@@ -741,10 +745,9 @@ bool latticePointOverlapsShadow(
     lineInfo = &shadow.lineInfoByEndpoint[0];
   }
 
-  return lineSegmentIntersectsCircle2(*p1, *p2, latticePoint,
-                                      lineInfo->unitVector,
-                                      lineInfo->length,
-                                      rSquared);
+  return circleDistanceFromLineSegmentSquared(*p1, *p2, point,
+                                              lineInfo->unitVector,
+                                              lineInfo->length);
 }
 
 vector<pair<double,double>> getShadowConvexHull(
@@ -1187,9 +1190,9 @@ bool tryProveGridCodeZeroImpossible(
         latticePoint.first -= shift.first;
         latticePoint.second -= shift.second;
         foundLatticeCollision =
-          latticePointOverlapsShadow(latticePoint,
-                                     cachedShadows[frameNumber][iModule],
-                                     numDims, rSquared);
+          pointDistanceFromShadowSquared(latticePoint,
+                                         cachedShadows[frameNumber][iModule],
+                                         numDims) <= rSquared;
       }
     }
 
@@ -2007,9 +2010,9 @@ bool tryProveGridCodeZeroImpossible_noModulo(
     const pair<double,double> shift =
       transformND(domainToPlaneByModule[iModule], x0);
 
-    if (!latticePointOverlapsShadow({-shift.first, -shift.second},
-                                    cachedShadows[frameNumber][iModule],
-                                    numDims, rSquared))
+    if (!(pointDistanceFromShadowSquared({-shift.first, -shift.second},
+                                         cachedShadows[frameNumber][iModule],
+                                         numDims) <= rSquared))
     {
       // This module never gets near grid code zero for the provided range of
       // locations. So this range can't possibly contain grid code zero.
